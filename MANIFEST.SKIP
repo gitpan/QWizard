@@ -1,0 +1,8 @@
+.*.cvsignore
+.~
+.*.old
+.*.bak
+.*Makefile
+.*CVS
+.*\.#
+

@@ -1,0 +1,26 @@
+README
+MANIFEST
+Makefile.PL
+QWizard.pm
+examples/guessing_game.pl
+examples/number_adding.pl
+examples/widget-test-screen.pl
+examples/smile.png
+examples/smile.fig
+API/Makefile.PL
+API/API.pm
+Generator/Makefile.PL
+Generator/Best.pm
+Generator/HTML.pm
+Generator/HTML/Makefile.PL
+Generator/HTML/Vertical.pm
+Generator/ReadLine.pm
+Generator/Tk.pm
+Generator_base/Generator.pm
+Generator_base/Makefile.PL
+Storage/CGICookie.pm
+Storage/CGIParam.pm
+Storage/Memory.pm
+Storage/Makefile.PL
+MANIFEST.SKIP
+META.yml                                 Module meta-data (added by MakeMaker)
