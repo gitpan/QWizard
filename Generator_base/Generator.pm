@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '2.0.1';
+our $VERSION = '2.1';
 use QWizard::Storage::Memory;
 require Exporter;
 
@@ -107,14 +107,15 @@ sub binize_x_data {
 sub do_graph_data {
     my ($self, $q, $wiz, $p, $data, $gopts) = @_;
     my ($w, $h) = ($def_width, $def_height);
-    my %gopts = @$gopts;
+    my %gopts;
+    %gopts = @$gopts if ($gopts);
     $w = $gopts{'-width'} if (exists($gopts{'-width'}));
     $h = $gopts{'-height'} if (exists($gopts{'-height'}));
 
     if ($have_gd_graph) {
 	my $gph = GD::Graph::lines->new($w, $h);
 	$gph->set(@$gopts) if (defined($gopts));
-	my %hg = @$gopts;
+	my %hg = %gopts;
 	$gph->set_legend(@{$hg{'legend'}}) if (exists($hg{'legend'}));
 	$data = $self->binize_x_data($data, $q, $w);
 	my $plot = $gph->plot($data);

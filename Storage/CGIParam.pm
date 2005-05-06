@@ -2,7 +2,7 @@ package QWizard::Storage::CGIParam;
 
 use strict;
 
-our $VERSION = '2.0.1';
+our $VERSION = '2.1';
 use CGI;
 
 our %cached_params = ();

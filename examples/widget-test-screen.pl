@@ -65,7 +65,7 @@ use QWizard::API;
      sub {
 	 my @results;
 	 foreach my $i (qw(textn hidetextn textboxn checkboxn menun radion 
-			   buttonn subwidgetn
+			   buttonn subwidgetn fileuploadn
 			   multi_checkboxnmcheckvalue1
 			   multi_checkboxnmcheckvalue2 )) {
 	     push @results,

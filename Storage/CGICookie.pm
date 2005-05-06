@@ -4,12 +4,13 @@ use strict;
 
 our %cached_cookies = ();
 
-our $VERSION = '2.0.1';
+our $VERSION = '2.1';
 use CGI qw(escapeHTML);
 
 sub new {
     my $class = shift;
-    bless {}, $class;
+    my $qw = shift;
+    bless {wiz => $qw}, $class;
 }
 
 sub access {

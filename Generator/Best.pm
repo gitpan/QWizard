@@ -1,7 +1,7 @@
 package QWizard::Generator::Best;
 
 use strict;
-our $VERSION = '2.0.1';
+our $VERSION = '2.1';
 
 sub new {
     # first check if we're in a web server...

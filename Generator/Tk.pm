@@ -1,7 +1,7 @@
 package QWizard::Generator::Tk;
 
 use strict;
-my $VERSION = '2.0.1';
+my $VERSION = '2.1';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -79,7 +79,7 @@ sub new {
     $self->add_handler('graph',
 		       \&QWizard::Generator::Tk::do_graph,
 		       [['norecurse','values'],
-			['norecursemulti','image_options']]);
+			['norecursemulti','graph_options']]);
     $self->add_handler('image',
 		       \&QWizard::Generator::Tk::do_image,
 		       [['norecurse','imgdata'],
@@ -99,8 +99,9 @@ sub new {
 
 sub goto_top {
     my $self = shift;
+    my $wiz = shift;
     $self->unmake_top();
-    $self->clear_params();
+    $wiz->reset_qwizard();
 }
 
 sub goto_next {
@@ -198,7 +199,7 @@ sub init_screen {
 }
 
 sub do_ok_cancel {
-  my ($self, $nexttext, $dontdocan) = @_;
+  my ($self, $nexttext, $wiz, $dontdocan) = @_;
   if (!$self->{'bot'}) {
       $self->{'bot'} = $self->{'top'}->Frame(-relief => 'raised',
 					     -borderwidth => 3);
@@ -220,7 +221,7 @@ sub do_ok_cancel {
 	  if (!$self->{'canbut'}) {
 	      $self->{'canbut'} = 
 		$self->{'bot'}->Button(-text => 'Cancel',
-				       -command => [\&goto_top, $self]);
+				       -command => [\&goto_top, $self, $wiz]);
 	      $self->{'canbut'}->pack(-side => 'right');
 	  }
       }
@@ -287,7 +288,7 @@ sub set_default {
 
 sub wait_for {
   my ($self, $wiz, $next) = @_;
-  $self->do_ok_cancel($next);
+  $self->do_ok_cancel($next, $wiz);
   $self->our_mainloop();
   return 1;
 }
@@ -755,7 +756,9 @@ sub open_branch {
 	return;
     }
 
-    foreach my $child (@{$q->{'children'}->($wiz, $tree->infoData($branch))}) {
+    my $children = $q->{'children'}->($wiz, $tree->infoData($branch));
+    return if (!$children || $#$children == -1);
+    foreach my $child (@$children) {
 	add_node($wiz, $tree, $child, $q, $branch, $labels, @expand);
     }
 }
@@ -806,7 +809,7 @@ sub end_confirm {
     my ($self, $wiz) = @_;
     # this will be deleted by the cancel button if they press it.
     $self->do_hidden($wiz, 'wiz_confirmed', 'Commit');
-    $self->do_ok_cancel("Commit");
+    $self->do_ok_cancel("Commit", $wiz);
     $self->our_mainloop();
     return 1;
 }
@@ -838,7 +841,7 @@ sub start_actions {
 sub end_actions {
     my ($self, $wiz) = @_;
     $self->put_it('Done',3,1);
-    $self->do_ok_cancel("Finish");
+    $self->do_ok_cancel("Finish", $wiz);
     $self->clear_params();
     $self->our_mainloop();
     return 1;

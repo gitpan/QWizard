@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '2.0.1';
+our $VERSION = '2.1';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -38,6 +38,9 @@ sub new {
     my $type = shift;
     my ($class) = ref($type) || $type;
     my %self = %defaults;
+    for (my $i = 0; $i <= $#_; $i += 2) {
+	$self{$_[$i]} = $_[$i+1];
+    }
     my $self = \%self;
     bless($self, $class);
     $self->add_handler('text',\&QWizard::Generator::HTML::do_entry,
@@ -102,7 +105,7 @@ sub new {
     $self->add_handler('graph',
 		       \&QWizard::Generator::HTML::do_graph,
 		       [['norecurse','values'],
-			['norecursemulti','image_options']]);
+			['norecursemulti','graph_options']]);
     $self->add_handler('image',
 		       \&QWizard::Generator::HTML::do_image,
 		       [['norecurse','imgdata'],
@@ -138,17 +141,23 @@ sub init_screen {
     $self->{'datastore'}->reset();
 
     return if ($self->{'started'} || $wiz->{'started'});
-    $self->{'started'} = $wiz->{'started'} = 1;
+    $self->{'started'} = $wiz->{'started'} = $self->{'prefstore'}{'started'} =1;
     $self->{'first_tree'} = 1;
+    my @otherargs;
+    if ($self->{'cssurl'}) {
+	push @otherargs, 'style', { src => $self->{'cssurl'}};
+    }
     print "Content-type: text/html\n\n" if (!$self->{'noheaders'} &&
 					    !$wiz->{'noheaders'});
     print $self->{'cgi'}->start_html(-title => escapeHTML($title),
 				     -bgcolor => $self->{'bgcolor'}
-				     || $wiz->{'bgcolor'} || "#ffffff");
+				     || $wiz->{'bgcolor'} || "#ffffff",
+				     @otherargs);
 
-    if ($self->{'immediate_out'} && $#{$self->{'immediate_out'}} > -1) {
-	print @{$self->{'immediate_out'}};
-	delete $self->{'immediate_out'};
+    if ($self->{'prefstore'}->{'immediate_out'} &&
+	$#{$self->{'prefstore'}->{'immediate_out'}} > -1) {
+	print @{$self->{'prefstore'}->{'immediate_out'}};
+	delete $self->{'prefstore'}->{'immediate_out'};
     }
     print $self->{'cgi'}->start_multipart_form(-name => $self->{'form_name'}),
       "\n";
@@ -166,10 +175,22 @@ sub wait_for {
   return 1;
 }
 
+sub do_css {
+    my ($self, $class, $name, $noidstr) = @_;
+    if ($self->{'cssurl'}) {
+	my $idstr = '';
+	$idstr = $class if (!$noidstr);
+	return " class=\"$class\" id=\"$idstr$name\" ";
+    }
+    return "";
+}
+
 sub do_question {
     my ($self, $q, $wiz, $p, $text, $qcount) = @_;
     return if (!$text && $q->{'type'} eq 'hidden');
-    print "  <tr><td valign=top>\n";
+    print "  <tr" . $self->do_css('qwquestion',$q->{'name'}) . ">";
+    print "<td" . $self->do_css('qwquestiontext',$q->{'name'}) . 
+      " valign=top>\n";
     if ($q->{'helptext'}) {
 	print $wiz->make_help_link($p, $qcount),
 	  escapeHTML($text), "</a>\n";
@@ -179,7 +200,7 @@ sub do_question {
     if ($q->{'helpdesc'}) {
       print "<br><small><i>" . escapeHTML($q->{helpdesc}) . "</i></small>";
     }
-    print "</td><td>\n";
+    print "</td><td" . $self->do_css('qwquestion',$q->{'name'}, 1) . ">\n";
 }
 
 sub do_question_end {
@@ -199,10 +220,10 @@ sub start_questions {
     }
     if ($intro) {
 	$intro = escapeHTML($intro);
-	$intro =~ s/\n\n/\n<p>\n/g;
-	print "$intro\n<p>\n";
+	$intro =~ s/\n\n/\n<p class=\"qwintroduction\">\n/g;
+	print "<p class=\"qwintroduction\">$intro\n<p class=\"qwintroduction\">\n";
     }
-    print "<table>\n";
+    print "<table class=\"qwquestions\">\n";
 }
 
 sub end_questions {
@@ -232,7 +253,7 @@ sub do_pass {
 
 sub do_button {
     my ($self, $q, $wiz, $p, $vals) = @_;
-    print "<input type=submit name=\"$q->{'name'}\" value=\"" . $vals . "\">\n";
+    print "<input" . $self->do_css('qwbutton',$q->{'name'}) . " type=submit name=\"$q->{'name'}\" value=\"" . $vals . "\">\n";
 }
 
 sub do_checkbox {
@@ -248,7 +269,7 @@ sub do_checkbox {
     if ($submit) {
 	$otherstuff .= " onclick=\"this.form.submit()\"";
     }
-    print "<input type=checkbox name=\"$q->{name}\"$otherstuff>";
+    print "<input" . $self->do_css('qwcheckbox',$q->{'name'}) . " type=checkbox name=\"$q->{name}\"$otherstuff>";
 }
 
 sub do_multicheckbox {
@@ -264,7 +285,7 @@ sub do_multicheckbox {
 	}
 	my $l = (($labels->{$v}) ? $labels->{$v} : "$v");
 	print "<tr><td>" . escapeHTML($l)  . "</td>\n";
-	print "<td><input $otherstuff value=\"" . escapeHTML($v) . 
+	print "<td><input" . $self->do_css('qwmulticheckbox',$q->{'name'}) . " $otherstuff value=\"" . escapeHTML($v) . 
 	  "\" type=checkbox name=\"$q->{name}$l\"></td></tr>";
 	# XXX: hack:
 	push @{$wiz->{'passvars'}},$q->{'name'} . $v;
@@ -278,6 +299,8 @@ sub do_radio {
     push @stuff, -onclick, "this.form.submit()" if ($submit);
 
     print $self->{'cgi'}->radio_group(-name => $name,
+				      -id => 'qwradio$name',
+				      -class => 'qwradio',
 				      -values => $vals,
 				      -linebreak => 'true',
 				      -labels => $labels,
@@ -291,13 +314,16 @@ sub do_label {
     if (defined ($vals)) {
 	my @labs = @$vals;  # copy this so map doesn't modify the source
 	map { $_ = escapeHTML($_) } @labs;
-	print join("<br>", @labs);
+	print "<span" . $self->do_css('qwlabel',$q->{'name'}) . ">" .
+	  join("<br>", @labs) . "</span>\n";
     }
 }
 
 sub do_link {
     my ($self, $q, $wiz, $p, $text, $url) = @_;
-    print $self->{'cgi'}->a({href => $url}, $text);
+    print $self->{'cgi'}->a({href => $url,
+			     id => $q->{'name'},
+			     class => 'qwlink' . $q->{'name'}}, $text);
 }
 
 sub do_paragraph {
@@ -305,9 +331,11 @@ sub do_paragraph {
     my @labs = @$vals;  # copy this so map doesn't modify the source
     map { $_ = escapeHTML($_) } @labs;
     if ($preformatted) {
-	print "<pre>\n",@labs,"</pre>\n";
+	print "<pre" . $self->do_css('qwparagraph',$q->{'name'}) . ">\n",
+	  @labs,"</pre>\n";
     } else {
-	print join("<br>", @labs);
+	print "<span" . $self->do_css('qwparagraph',$q->{'name'}) . ">" .
+	  join("<br><br>", @labs) . "</span>\n";
     }
 }
 
@@ -317,6 +345,8 @@ sub do_menu {
     push @stuff, -onchange, "this.form.submit()" if ($submit);
 
     print $self->{'cgi'}->popup_menu(-name => $name,
+				     -id => 'qwmenu' . $name,
+				     -class => 'qwmenu',
 				     -values => $vals,
 				     -labels => $labels,
 				     -default => $def,
@@ -328,6 +358,8 @@ sub do_fileupload {
 
     push @{$wiz->{'passvars'}}, $q->{'name'} . "_qwf";
     print $self->{'cgi'}->filefield(-name => $q->{name},
+				     -id => 'qwmenu' . $q->{'name'},
+				     -class => 'qwmenu',
 				    -default => $def);
 }
 
@@ -434,14 +466,15 @@ sub do_entry {
 	$otherinfo .= " type=\"password\"";
     }
 
-    print "<input name=\"$name\" $otherinfo>";
+    print "<input" . $self->do_css('qwtext',$q->{'name'}) . 
+      " name=\"$name\" $otherinfo>";
 }
 
 sub do_textbox {
     my ($self, $q, $wiz, $p, $def, $width, $size, $height, $submit) = @_;
     my $otherinfo;
     if ($size || $width) {
-	my $size = $size || $width;
+	$size = $size || $width;
 	$otherinfo .= " cols=\"$size\"";
     }
     if ($height) {
@@ -450,14 +483,16 @@ sub do_textbox {
     if ($submit) {
 	$otherinfo .= " onchange=\"this.form.submit()\"";
     }
-    print "<textarea name=\"$q->{name}\" $otherinfo>" .
-      escapeHTML($def) . "</textarea>";
+    print "<textarea" . $self->do_css('qwtextbox',$q->{'name'}) . 
+      " name=\"$q->{name}\" $otherinfo>" . escapeHTML($def) . "</textarea>";
 }
 
 sub do_error {
     my ($self, $q, $wiz, $p, $err) = @_;
-    print "<tr><td colspan=3><font color=red>" . escapeHTML($err) . 
-      "</font></td></tr>\n";
+    print "<tr" . $self->do_css('qwerrorrow',$q->{'name'}) . "><td" .
+      $self->do_css('qwerrorcol',$q->{'name'}) .
+	" colspan=3><font color=red>" . escapeHTML($err) .
+	  "</font></td></tr>\n";
 }
 
 sub do_separator {
@@ -467,7 +502,10 @@ sub do_separator {
     } else {
 	$text = escapeHTML($text);
     }
-    print "  <tr><td colspan=3>$text</td></tr>";
+    my $name = (ref($q) eq 'HASH') ? $q->{'name'} : "";
+    print "  <tr" . $self->do_css('qwseparatorrow',$name) . 
+      "><td" . $self->do_css('qwseparatorcol',$name) . 
+	" colspan=3>$text</td></tr>";
 }
 
 sub do_hidden {
@@ -490,12 +528,15 @@ sub do_unknown {
 sub do_table {
     my ($self, $q, $wiz, $p, $table, $headers) = @_;
     my $color = $self->{'tablebgcolor'} || $self->{'bgcolor'};
-    print "<table bgcolor=$color border=1>\n";
+    print "<table" . $self->do_css('qwtable',$q->{'name'}) .
+      " bgcolor=$color border=1>\n";
 
     if ($headers) {
-	print " <tr bgcolor=\"$self->{headerbgcolor}\">\n";
+	print " <tr " . $self->do_css('qwtableheaderrow',$q->{'name'}) .
+	  "bgcolor=\"$self->{headerbgcolor}\">\n";
 	foreach my $column (@$headers) {
-		print "<th>" . ($column || "&nbsp;") . "</th> ";
+	    print "<th" . $self->do_css('qwtableheader',$q->{'name'}) .
+	      ">" . ($column || "&nbsp;") . "</th> ";
 	}
 	print " </tr>\n";
     }
@@ -506,15 +547,17 @@ sub do_table {
 
 sub do_a_table {
     my ($self, $table, $started, $wiz, $q, $p) = @_;
-    print "<table>" if (!$started);
+    print "<table" . $self->do_css('qwsubtable',$q->{'name'}) . ">"
+      if (!$started);
     foreach my $row (@$table) {
-	print " <tr>\n";
+	print " <tr" . $self->do_css('qwtablerow',$q->{'name'}) . ">\n";
 	foreach my $column (@$row) {
 	    print "<td>";
 	    if (ref($column) eq "ARRAY") {
 	        $self->do_a_table($column, 0, $wiz, $q, $p);
 	    } elsif (ref($column) eq "HASH") {
-		print "<table>\n";
+		print "<table" . $self->do_css('qwtablewidget',$q->{'name'}) .
+		  ">\n";
 		my $param = $wiz->ask_question($p, $column);
 		push @{$wiz->{'passvars'}}, $param;
 		print "</table>\n";
@@ -538,7 +581,8 @@ sub do_graph {
 	$file =~ s/(.*)\///;
 	
 	# XXX: net-policy specific hack!
-	print "<img src=\"?webfile=$file\">\n";
+	print "<img" . $self->do_css('qwgraph',$q->{'name'}) .
+	  " src=\"?webfile=$file\">\n";
     } else {
 	print "graphs not supported without additional software\n";
     }
@@ -587,7 +631,8 @@ sub do_image {
 		$wmsg = "width=\"$width\"";
 	}
 
-	print "<img $imagesrc $altmsg $hmsg $wmsg border=1>\n";
+	print "<img" . $self->do_css('qwimage',$q->{'name'}) .
+	  " $imagesrc $altmsg $hmsg $wmsg border=1>\n";
 }
 
 ##################################################
@@ -709,11 +754,12 @@ sub get_name {
 
 #recursively print out the tree
 sub print_branch {
+    # XXX: css this
     my ($wiz, $q, $cur, $selected, $nest, $labels, @expand) = @_;
-    
+
     print "<br>" if $nest;
     for my $i (1 .. (5 * $nest)) { print "&nbsp;"; }
-    
+
     my $children = $q->{'children'}->($wiz, get_name($cur));
     if ($#$children > -1) {
 	my @ans = grep($_ eq get_name($cur), @expand); 
@@ -732,6 +778,7 @@ sub print_branch {
 
 # prints a single node, and any required links, etc
 sub make_link {
+    # XXX: css this
     my ($imgtype, $oper, $cur, $selected, $q, $labels) = @_;
     my $name = get_name($cur);
     my $treename = $q->{'name'} || 'tree';
@@ -763,15 +810,17 @@ sub make_link {
 sub start_confirm {
     my ($self, $wiz) = @_;
 
-    print "<h1>Wrapping up.</h1>\n";
+    print "<h1 class=\"qwconfirmtitle\">Wrapping up.</h1>\n";
     print $self->{'cgi'}->start_form(),"\n";
-    print "<ul><p>Do you want to commit the following changes:\n";
-    print "<ul>\n";
+    print "<ul class=\"qwconfirmtop\">\n" .
+      "  <p>Do you want to commit the following changes:\n";
+    print "<ul class=\"qwconfirmwrap\">\n";
 }
 
 sub end_confirm {
     my ($self, $wiz) = @_;
     print "</ul></ul>\n";
+    # XXX: css these.  id or class?
     print "<input type=submit name=wiz_confirmed value=\"Commit\">\n";
     print "<input type=submit name=wiz_canceled value=\"Cancel\">\n";
     print $self->{'cgi'}->end_form();
@@ -780,7 +829,7 @@ sub end_confirm {
 
 sub do_confirm_message {
     my ($self, $wiz, $msg) = @_;
-    print "<li>" . $self->{'cgi'}->escapeHTML($msg) . "\n";
+    print "<li class=\"confirmmsg\">" . $self->{'cgi'}->escapeHTML($msg) . "\n";
 }
 
 sub canceled_confirm {
@@ -797,14 +846,15 @@ sub canceled_confirm {
 sub start_actions {
     my ($self, $wiz) = @_;
     print $self->{'cgi'}->h1('Processing your request...');
-    print "<ul>\n";
+    print "<div class=\"qwactions\">\n";
+    # XXX: css pre or remove and style qwactions
     print "<pre>\n";
 }
 
 sub end_actions {
     my ($self, $wiz) = @_;
     print "</pre>\n";
-    print "</ul>\n";
+    print "</div>\n";
     print $self->{'cgi'}->h2('Done!');
     print "<a href=\"$wiz->{top_location}\">Return to Top</a>\n";
     $self->{'started'} = $wiz->{'started'} = 0;
@@ -812,13 +862,13 @@ sub end_actions {
 
 sub do_action_output {
     my ($self, $wiz, $action) = @_;
-    print escapeHTML($action) . "\n";
+    print "<div class=\"qwaction\">" . escapeHTML($action) . "</div>\n";
 }
 
 sub do_action_error {
     my ($self, $wiz, $errstr) = @_;
-    print "<font color=red size=+1>ERROR: <b>" . escapeHTML($errstr) . 
-      "</b></font>\n";
+    print "<font color=red size=+1><div class=\"qwactionerror\">ERROR: <b>" . escapeHTML($errstr) .
+      "</b></div></font>\n";
 }
 
 sub make_displayable {
