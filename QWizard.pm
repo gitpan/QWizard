@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '2.1';
+our $VERSION = '2.2';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -50,6 +50,44 @@ sub new {
     parseprefs($self,$npprefs);
 
     return $self;
+}
+
+#
+# $wiz->run_hooks(NAME, HOOK_ARGS)
+#   runs all hooks bound to NAME with a passed reference to QWIZARD,
+#   earlier passed MAGIC_ARGS (see below) and a copied ARGS in an array 
+#   reference, which is passed in from the calling args.  The result is:
+#
+#     CODE->($wiz, MAGIC_ARGS, [HOOK_ARGS])
+#
+sub run_hooks {
+    my $self = shift;
+    my $hookname = shift;
+    my @args = @_;
+    if (exists($self->{'hooks'}{$hookname})) {
+	foreach my $hook (@{$self->{'hooks'}{$hookname}}) {
+	    $hook->{'code'}($self, @{$hook->{'args'}}, \@args);
+	}
+    }
+}
+
+#
+# $wiz->add_hooks(NAME, SUB_REF, MAGIC_ARGS)
+#   Adds a SUB_REF code block to the NAME set of hooks.  Optionally, a
+#   set of MAGIC_ARGS may be passed as well.  For portability ease, it is
+#   suggested that MAGIC_ARGS be a single argument of an array reference
+#   of any arguments that need passing.
+#
+sub add_hook {
+    my $self = shift;
+    my $hookname = shift;
+    my $coderef = shift;
+    my @magic_args = @_;
+    my $hook_definition = {'code' => $coderef};
+    push @{$self->{'hooks'}{$hookname}}, $hook_definition;
+    if ($#magic_args > -1) {
+	$hook_definition->{'args'} = \@magic_args;
+    }
 }
 
 ########################################################################
@@ -277,8 +315,8 @@ sub keep_working {
 			     my $num = $_[1];
 			     if ($_[0]{'done'} == 2) {
 				 $$num++;
-				 $_[2]->munge_form_data($_[2]->get_primary($_[0]{'name'}));
 				 qwdebug("munging form data for primary $_[0]->{name}");
+				 $_[2]->munge_form_data($_[2]->get_primary($_[0]{'name'}));
                              }
                          }, \$num, $self);
   qwdebug("$num primaries ran last time\n");
@@ -298,9 +336,11 @@ sub keep_working {
 			     sub {
 				 $_[0]{'done'} = 0 if ($_[0]{'done'} == 2);
 			     });
+      qwparam('redo_screen',0);
   } else {
       if ($num > 0) {
 	  # run post_answers clauses and mark as done
+	  $self->run_hooks('post_answers_begin');
 	  qwdebug("Running post answers clauses");
 	  $self->foreach_primary($self->{'active'},
 		sub {
@@ -330,6 +370,7 @@ sub keep_working {
 		        $_[0]{'done'} = 1;
 
 		    }}, $self);
+	  $self->run_hooks('post_answers_end');
       }
   }
 
@@ -475,6 +516,7 @@ sub add_todos {
 	$order = $arg if ($arg eq '-early');
 	$order = $arg if ($arg eq '-late');
 	$merge = 1 if ($arg eq '-merge');
+	$count = $merge = shift if ($arg eq '-mergen');
 	$actionslast = 1 if ($arg eq '-actionslast');
 	$remap .= shift if ($arg eq '-remap');
     }
@@ -496,7 +538,7 @@ sub add_todos {
 	    push @{$addto->{'children'}}, $newchild;
 	}
     }
-    if ($#_ > -1 && $merge) {
+    if (($#_ > -1 || $merge > 1) && $merge) {
 	if ($order eq '-early') {
 	    $addto->{'children'}[0]{'merge'} = $count;
 	} else {
@@ -930,9 +972,11 @@ sub ask_questions {
 	if ($p->{'questions'}) {
 	  $self->{'qcount'} = -1;
 	  qwdebug("starting queston processing/display");
+	  $self->run_hooks('ask_questions_begin');
 	  $self->{'generator'}->start_questions($self, $p,
 						$self->unparamstr($self->get_value($p->{title})),
 						(qwpref('pref_intro') ne '0' ? $self->unparamstr($self->get_value($p->{introduction})) : ""));
+	  $self->run_hooks('ask_questions_started');
 	  my @questions = @{$p->{'questions'}};
 	  my ($q, @newqs);
 
@@ -957,13 +1001,12 @@ sub ask_questions {
 	      delete $pdesc->{'error'};
 	  }
 	  foreach $q (@newqs) {
-	      $self->{'qcount'}++;
-	      $self->{'allqcount'}++;
 	      $self->{'currentq'} = $q; # for generators mostly
 	      $self->{'currentp'} = $p; # for generators mostly
 	      push @passvars, $self->ask_question($p, $q);
 	  }
 	  $self->{'generator'}->end_questions($self, $p);
+	  $self->run_hooks('ask_questions_end');
         }
 
 	if ($p->{'sub_modules'}) {
@@ -987,6 +1030,7 @@ sub ask_questions {
 	}
 	$repeat--;
 	$pdesc->{'done'} = 2;
+
 	if ($repeat <= 0) {
 	    qwdebug("Done processing screen's primaries ");
 	    if ($self->{'allqcount'}) {
@@ -1029,6 +1073,10 @@ sub ask_question {
 
     my $pdesc = $self->{'context'};
 
+    # increment the question counts
+    $self->{'qcount'}++;
+    $self->{'allqcount'}++;
+
     if (ref($q) ne "HASH") {
 	$self->{'generator'}->do_separator($q, $self, $p, $q);
     } else {
@@ -1053,7 +1101,7 @@ sub ask_question {
 	} else {
 	    if (qwparam($q->{'name'}) &&
 		!$q->{'override'} && !$self->{'override'}) {
-		print STDERR "*** QWizard: Warning redefining value from question named $q->{name} (value was: " . qwparam($q->{'name'}) . ".  This may or may not have been intentional.  Add the 'override' flag to the second question, or rename the parent's question, to turn off this warning in the future\n";
+		print STDERR "*** QWizard: Warning redefining value from question named $q->{name} (value was: " . qwparam($q->{'name'}) . ").  This may or may not have been intentional.  Add the 'override' flag to the second question, or rename the parent's question, to turn off this warning in the future\n";
 	    }
 	    $def = $self->get_value($q->{default});
 	}
@@ -1163,10 +1211,12 @@ sub start_page {
   my $self = shift;
   $qwcurrent = $self;
   qwdebug("starting page");
+  $self->run_hooks('start_page_begin');
   $self->{'generator'}->init_screen($self, 
 				    $self->{'generator'}->{'title'} ||
 				    $self->{'title'} ||
 				    'the wizard');
+  $self->run_hooks('start_page_end');
 }
 
 sub qwparam {
@@ -2460,11 +2510,6 @@ Adds the primary to the B<end> of the list of primaries to call, such
 that it is called last, unless another call to I<add_todos>() appends
 something even later.
 
-=item -merge
-
-Merges all the specified primaries listed into a single screen.  This has the
-effect of having multiple primaries displayed in one window.
-
 =item -actionslast
 
 All the actions of subsequent primaries that have been added as the result
@@ -2477,6 +2522,15 @@ own actions to be successful.
 
 However, this flag indicates that the actions of the childrens' primaries
 listed in this call are to be called B<before> the current primary's actions.
+
+=item -merge
+
+Merges all the specified primaries listed into a single screen.  This has the
+effect of having multiple primaries displayed in one window.
+
+Important note: you can not use both -remap (see below) and -merge at
+the same time!  This will break the remapping support and you will not
+get expected results!
 
 =item -remap => 'NAME'
 
@@ -2492,6 +2546,10 @@ This is rather complex and is better illustrated through an example.  There
 is an example that illustrates this in the QWizard Perl module source code
 B<examples> directory, in the file B<number_adding.pl>.  This code repeatedly
 asks for numbers from the user using the same primary.
+
+Important note: you can not use both -remap and -merge at the same
+time!  This will break the remapping support and you will not get
+expected results!
 
 =back
 

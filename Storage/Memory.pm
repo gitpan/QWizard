@@ -1,33 +1,15 @@
 package QWizard::Storage::Memory;
 
 use strict;
+use QWizard::Storage::Base;
 
-our $VERSION = '2.1';
-use CGI;
+our @ISA = qw(QWizard::Storage::Base);
+
+our $VERSION = '2.2';
 
 sub new {
     my $class = shift;
     bless {}, $class;
-}
-
-sub access {
-    my $self = shift;
-    my ($it);
-    if (ref($self) =~ /QWizard/) {
-	$it = shift;
-    } else {
-	$it = $self;
-    }
-    if ($#_ > -1) {
-	$self->{'vars'}{$it} = $_[0];
-
-    }
-#    print "************************************************** $self $it $self->{'vars'}{$it}\n";
-    return $self->{'vars'}{$it};
-}
-
-sub get {
-    return access(@_);
 }
 
 sub get_all {
@@ -35,13 +17,21 @@ sub get_all {
     return $self->{'vars'};
 }
 
+sub set {
+    my ($self, $it, $value) = @_;
+    $self->{'vars'}{$it} = $value;
+    return $value;
+}
+
+# faster than the parent iterative method
 sub set_all {
     my $self = shift;
     %{$self->{'vars'}} = %{$_[0]};
 }
 
-sub set {
-    return access(@_);
+sub get {
+    my ($self, $it, $value) = @_;
+    return $self->{'vars'}{$it};
 }
 
 sub reset {

@@ -1,8 +1,10 @@
 package QWizard::Storage::CGIParam;
 
 use strict;
+use QWizard::Storage::Base;
+our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '2.1';
+our $VERSION = '2.2';
 use CGI;
 
 our %cached_params = ();
@@ -12,37 +14,25 @@ sub new {
     bless {}, $class;
 }
 
-sub access {
-    my ($self) = shift;
-    my ($it);
-    my $ret;
-    if (ref($self) =~ /QWizard/) {
-	$it = shift;
-    } else {
-	$it = $self;
-    }
+sub maybe_create_cgi {
+    my $self = shift;
     if (!exists($self->{'cgi'})) {
 	# we do this here late binding as possible for various reasons
 	$self->{'cgi'} = new CGI;
     }
-    if ($#_ > -1) {
-	return $cached_params{$it} if (exists($cached_params{$it}));
-	$ret = $self->{'cgi'}->param($it, $_[0]);
-    } else {
-	return $cached_params{$it} if (exists($cached_params{$it}));
-
-	$ret = $self->{'cgi'}->param($it);
-    }
-    #    print STDERR "qwparam (\"$self\", \"$it\", \"$_[0]\") -> $ret\n";
-    return $ret;
 }
 
 sub get {
-    return access(@_);
+    my ($self, $it) = @_;
+    $self->maybe_create_cgi();
+    return $cached_params{$it} if (exists($cached_params{$it}));
+    return $self->{'cgi'}->param($it);
 }
 
 sub set {
-    return access(@_);
+    my ($self, $it, $val) = @_;
+    $self->maybe_create_cgi();
+    return $self->{'cgi'}->param($it, $val);
 }
 
 sub reset {

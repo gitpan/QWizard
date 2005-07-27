@@ -1,7 +1,7 @@
 package QWizard::Generator::Tk;
 
 use strict;
-my $VERSION = '2.1';
+my $VERSION = '2.2';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -205,14 +205,16 @@ sub do_ok_cancel {
 					     -borderwidth => 3);
       if (!$self->{'prevbut'}) {
 	  $self->{'prevbut'} = 
-	    $self->{'bot'}->Button(-text => ('Back'),
+	    $self->{'bot'}->Button(-text => ($wiz->{'back_text'} || 
+						 'Back'),
 				   -command => [\&goto_prev, 
 						$self]);
 	  $self->{'prevbut'}->pack(-side => 'left');
       }
       if (!$self->{'nextbut'}) {
 	  $self->{'nextbut'} = 
-	    $self->{'bot'}->Button(-text => ($nexttext || 'Ok'),
+	    $self->{'bot'}->Button(-text => ($nexttext  ||
+					     $wiz->{'next_text'} || 'Next'),
 				   -command => [\&goto_next, 
 						$self]);
 	  $self->{'nextbut'}->pack(-side => 'left');
@@ -220,7 +222,8 @@ sub do_ok_cancel {
       if (! $dontdocan) {
 	  if (!$self->{'canbut'}) {
 	      $self->{'canbut'} = 
-		$self->{'bot'}->Button(-text => 'Cancel',
+		$self->{'bot'}->Button(-text => ($wiz->{'cancel_text'} || 
+						 'Cancel'),
 				       -command => [\&goto_top, $self, $wiz]);
 	      $self->{'canbut'}->pack(-side => 'right');
 	  }

@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '2.1';
+our $VERSION = '2.2';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -276,6 +276,7 @@ sub do_multicheckbox {
     my ($self, $q, $wiz, $p, $defs, $vals, $labels, $submit) = @_;
     print "<table>";
     my $count = -1;
+    my ($startname, $endname);
     foreach my $v (@$vals) {
 	$count++;
 	my $otherstuff;
@@ -289,8 +290,84 @@ sub do_multicheckbox {
 	  "\" type=checkbox name=\"$q->{name}$l\"></td></tr>";
 	# XXX: hack:
 	push @{$wiz->{'passvars'}},$q->{'name'} . $v;
+	$startname = "$q->{name}$l" if ($count == 0);
+	$endname = "$q->{name}$l" if ($count == $#$vals);
     }
+
     print "</table>";
+
+    #Javascript for setting/unsetting/toggling buttons
+    print "
+
+<script language=\"JavaScript\">
+    function $q->{name}_setall() {
+      var doit = false;
+      for (i=0; i<document.qwform.elements.length; i++) {
+        if (document.qwform.elements[i].type == \"checkbox\") {
+          if (document.qwform.elements[i].name == \"$startname\") {
+            doit = true;
+          }
+          if (doit) {
+            document.qwform.elements[i].checked = true;
+          }
+          if (document.qwform.elements[i].name == \"$endname\") {
+            doit = false;
+          }
+        }
+      }
+    }
+
+    function $q->{name}_unsetall() {
+      var doit = false;
+      for (i=0; i<document.qwform.elements.length; i++) {
+        if (document.qwform.elements[i].type == \"checkbox\") {
+          if (document.qwform.elements[i].name == \"$startname\") {
+            doit = true;
+          }
+          if (doit) {
+            document.qwform.elements[i].checked = false;
+          }
+          if (document.qwform.elements[i].name == \"$endname\") {
+            doit = false;
+          }
+        }
+      }
+    }
+
+    function $q->{name}_toggleall() {
+      var doit = false;
+      for (i=0; i<document.qwform.elements.length; i++) {
+        if (document.qwform.elements[i].type == \"checkbox\") {
+          if (document.qwform.elements[i].name == \"$startname\") {
+            doit = true;
+          }
+          if (doit) {
+            if (document.qwform.elements[i].checked) {
+              document.qwform.elements[i].checked = false;
+            } else {
+              document.qwform.elements[i].checked = true;
+            }
+          }
+          if (document.qwform.elements[i].name == \"$endname\") {
+            doit = false;
+          }
+        }
+      }
+    }
+	    ";
+#     foreach my $boxname (@boxnames) {
+# 	print " document.qwform.try1.checked=true;\n";
+# #	print " document.qwform.\"$boxname\".checked=true;\n";
+#     }
+    print "
+</script>
+
+<a href=\"javascript:$q->{name}_setall()\">[Set All]</a>
+<a href=\"javascript:$q->{name}_unsetall()\">[Unset All]</a>
+<a href=\"javascript:$q->{name}_toggleall()\">[Toggle All]</a>
+
+";
+
 }
 
 sub do_radio {

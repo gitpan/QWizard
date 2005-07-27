@@ -2,12 +2,12 @@ package QWizard::API;
 
 use strict;
 
-our $VERSION = '2.1';
+our $VERSION = '2.2';
 require Exporter;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(qw_hidden qw_primary qw_text qw_textbox qw_checkbox qw_radio
-		 qw_menu qw_label qw_paragraph);
+		 qw_menu qw_label qw_paragraph qw_button);
 
 ###########################################################################
 # primary
@@ -123,6 +123,12 @@ sub qw_hidden {
     return {type => 'hidden', name => $_[0], values => $_[1], @_};
 }
 
+# name, text, clickedvalue, buttontext
+sub qw_button {
+    return {type => 'button', name => $_[0], text => $_[1], 
+	    default => $_[2], values => $_[3]};
+}
+
 1;
 =head1 NAME
 
@@ -177,6 +183,10 @@ Labels:
 
 Hidden vars:
   qw_hidden(name, value);
+
+Buttons:
+  qw_button(name, question text, clicked value, button label);
+
 
 =head1 TODO
 
