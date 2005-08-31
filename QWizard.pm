@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '2.2';
+our $VERSION = '2.2.1';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -211,6 +211,7 @@ sub magic {
 
   $self->{'last_screen'} = 0;
 
+  $self->run_hooks('start_magic');
   do {
       qwdebug("------------------------------------------------------------------");
       qwdebug("incoming: " . ref($self->{'generator'}) . " :" 
@@ -230,6 +231,7 @@ sub magic {
       }
   } while ((!$self->{'last_screen'} && !$self->{'one_pass'} && 
 	    !$self->{'generator'}{'one_pass'}));
+  $self->run_hooks('end_magic');
 }
 
 sub do_named_primaries {
@@ -1675,6 +1677,10 @@ answers.
 
 =head1 SYNOPSIS
 
+  #
+  # The following code works as a application *or* as a CGI script both:
+  #
+
   use QWizard;
 
   my %primaries =
@@ -1704,6 +1710,11 @@ answers.
 
   $qw->magic('starting_node');
 
+
+  #
+  # PLEASE see the examples in the examples directory.
+  #
+
 =head1 DESCRIPTION
 
 QWizard displays a list of grouped questions, and retrieves and processes
@@ -1721,28 +1732,47 @@ the data has been gathered and verified, then it can be handled as appropriate
 (e.g., written to a database, used for system configuration, or used to
 generate a graph.)
 
-Current user interfaces that exist are HTML, Tk, and (minimally) ReadLine.
-A single QWizard script implementation can make use of any of the output
-formats without code modification.  Thus it is extremely easy to write
-portable I<wizard> scripts that can be used without modification by both
-graphical window environments (Tk) and HTML-based web environments (e.g., CGI
-scripts.)
+Current user interfaces that exist are HTML, Gtk2, Tk, and (minimally)
+ReadLine.  A single QWizard script implementation can make use of any
+of the output formats without code modification.  Thus it is extremely
+easy to write portable I<wizard> scripts that can be used without
+modification by both graphical window environments (Gtk2 and Tk) and
+HTML-based web environments (e.g., CGI scripts.), as well with
+intercative command line enviornments (ReadLine).
 
-Back-end interfaces (child classes of the I<QWizard::Generator> module) are
-responsible for displaying the information to the user.  Currently HTML and
-Tk, in that order, are the two output mechanisms that work the best.  Others
-are planned, but are not far along in development.  Developing new generator
-back-ends is fairly simple and doesn't take a lot of code (assuming the
-graphic interface is fairly powerful and contains a widget library.)
+Back-end interfaces (child classes of the I<QWizard::Generator>
+module) are responsible for displaying the information to the user.
+Currently HTML, Gtk2, Tk and ReadLine, are the output mechanisms that
+work the best (in that order).  Some others are planned (namely a
+curses version), but are not far along in development.  Developing new
+generator back-ends is fairly simple and doesn't take a lot of code
+(assuming the graphic interface is fairly powerful and contains a
+widget library.)
 
 QWizard operates by displaying a series of "screens" to the user.  Each screen
 is defined in a QWizard construct called a I<primary> that describes the
 attributes of a given screen, including the list of I<questions> to be
 presented to the user.  Primaries can contain questions, things to do
 immediately after the questions are answered (I<post_answers>), and things
-to do once the entire series of screens have been answered (I<actions>.)
+to do once the entire series of screens have been answered (I<actions>).
 Other information, such as a title and an introduction, can also be attached
 to a primary.
+
+An example very minimal primary definition containing one question:
+
+  my %primaries = (
+    myprimary =>
+    {
+      title => "my screen title",
+      introduction => "optional introduction to the screen",
+      questions =>
+      [
+        {
+          type => 'checkbox',
+          text => 'Should the chicken cross the road?',
+        }
+      ],
+    }
 
 After defining a set of primaries, a new QWizard object must be created.  The
 QWizard I<new>() constructor is given a set of options, such as window title
@@ -1751,14 +1781,20 @@ of options may be found in the "QWizard new() Options" section.) The question
 display and data collection is started by calling the I<magic>() routine of
 the new QWizard object.
 
-There are examples distributed with the QWizard module sources that may help
-to understand the whole system and what it is capable of.  See the B<examples>
-directory of the QWizard source code tree for details.  Also, QWizard was
-written mostly due to requirements of the Net-Policy project.  Net-Policy
-makes very extensive use of QWizard and is another good place to look for
-examples.  In fact, the QWizard CVS code is located inside the Net-Policy CVS
-tree.  See http://net-policy.sourceforge.net/ for details on the Net-Policy
-project.
+  my $qw = new QWizard(primaries => \%primaries,
+                       title => 'my title');
+  $qw->magic('myprimary');
+
+There are examples distributed with the QWizard module sources that
+may help to understand the whole system and what it is capable of.
+See the B<examples> directory of the QWizard source code tree for
+details.  Also, QWizard was written mostly due to requirements of the
+Net-Policy project.  Net-Policy makes very extensive use of QWizard
+and is another good place to look for examples.  In fact, the QWizard
+CVS code is located inside the Net-Policy CVS tree.  See
+http://net-policy.sourceforge.net/ for details on the Net-Policy
+project.  There are a number of screen shots showing all the
+interfaces as well on the main net-policy web site.
 
 =head2 MAGIC() PSEUDO-CODE
 
@@ -1815,17 +1851,18 @@ Current generator classes are:
 
   - QWizard::Generator::Best           (default: picks the best available)
   - QWizard::Generator::HTML
+  - QWizard::Generator::Gtk2
   - QWizard::Generator::Tk
   - QWizard::Generator::ReadLine       (limited in functionality)
 
 The I<QWizard::Generator::Best> generator is used if no specific generator
 is specified.  The I<Best> generator will create an HTML generator if used
 in a web context (i.e., a CGI script), or else pick the best of the available
-other generators (Tk, then ReadLine).
+other generators (Gtk2, then Tk, then ReadLine).
 
-This example forces a Tk generator to be used:
+This example forces a Gtk2 generator to be used:
 
-   my $wiz = new QWizard(generator => new QWizard::QWizard::Tk(),
+   my $wiz = new QWizard(generator => new QWizard::QWizard::Gtk2(),
                          # ...
                         );
 
@@ -1834,7 +1871,7 @@ This example forces a Tk generator to be used:
 This should be the top location of a web page where the questions will be
 displayed.  This is needed for "go to top" buttons and the like to work.  This
 is not needed if the QWizard-based script is not going to be used in a CGI
-or other web-based environment.
+or other web-based environment (eg, if it's going to be used in mod_perl).
 
 =item primaries => \%my_primaries
 
@@ -1994,10 +2031,11 @@ before the wizard is finished.
 # successful.  Returning anything else will print the result, as if it
 # is an error message, to the user.
 
-For HTML output, these will be run just before the next screen is printed
-after the user has submitted the answers back to the web server.  For
-window-based output (Tk, etc.) the results are similar and these subroutines
-are evaluated before the next window is drawn.
+For HTML output, these will be run just before the next screen is
+printed after the user has submitted the answers back to the web
+server.  For window-based output (Gtk2, Tk, etc.) the results are
+similar and these subroutines are evaluated before the next window is
+drawn.
 
 =item actions => [ VALUES ]
 
@@ -2629,10 +2667,11 @@ following:
 
 =head1 EXAMPLES
 
-There are a few usage examples in the B<examples> directory of the source
-package.  These examples can be run from the command line or installed as a
-CGI script without modification.  They will run as a CGI script if run from
-a web server, or will launch a Tk window if run from the command line.
+There are a few usage examples in the B<examples> directory of the
+source package.  These examples can be run from the command line or
+installed as a CGI script without modification.  They will run as a
+CGI script if run from a web server, or will launch a Gtk2 or Tk
+window if run from the command line.
 
 =head1 EXPORT
 

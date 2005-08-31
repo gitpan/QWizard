@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '2.2';
+our $VERSION = '2.2.1';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -198,7 +198,15 @@ sub do_question {
 	print escapeHTML($text);
     }
     if ($q->{'helpdesc'}) {
-      print "<br><small><i>" . escapeHTML($q->{helpdesc}) . "</i></small>";
+
+      #
+      # Get the actual help text, in case this is a subroutine.
+      #
+      my $helptext = $q->{'helpdesc'};
+      if (ref($helptext) eq "CODE") {
+          $helptext = $helptext->();
+      }
+      print "<br><small><i>" . escapeHTML($helptext) . "</i></small>";
     }
     print "</td><td" . $self->do_css('qwquestion',$q->{'name'}, 1) . ">\n";
 }
@@ -566,8 +574,9 @@ sub do_textbox {
 
 sub do_error {
     my ($self, $q, $wiz, $p, $err) = @_;
-    print "<tr" . $self->do_css('qwerrorrow',$q->{'name'}) . "><td" .
-      $self->do_css('qwerrorcol',$q->{'name'}) .
+    my $name = ($q ? $q->{'name'} : '');
+    print "<tr" . $self->do_css('qwerrorrow',$name) . "><td" .
+      $self->do_css('qwerrorcol',$name) .
 	" colspan=3><font color=red>" . escapeHTML($err) .
 	  "</font></td></tr>\n";
 }

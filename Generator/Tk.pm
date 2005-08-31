@@ -1,7 +1,7 @@
 package QWizard::Generator::Tk;
 
 use strict;
-my $VERSION = '2.2';
+my $VERSION = '2.2.1';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -309,19 +309,29 @@ sub do_error {
 sub do_question {
     my ($self, $q, $wiz, $p, $text, $qcount) = @_;
     my $top = $self->{'qtable'};
+
     $self->{'currentq'} = $qcount + $self->{'qadd'};
-    if ($q->{'helpdesc'} && !$self->qwpref('usehelpballons')) {
+
+    #
+    # Get the actual help text, in case this is a subroutine.
+    #
+    my $helptext = $q->{'helpdesc'};
+    if (ref($helptext) eq "CODE") {
+	$helptext = $helptext->();
+    }
+
+    if ($helptext && !$self->qwpref('usehelpballons')) {
 	my $f = $top->Frame();
 	$f->Label(-text => $text, -anchor => 'nw')->pack(-anchor => 'w');
-	$f->Label(-text => $q->{'helpdesc'}, -anchor => 'nw',
+	$f->Label(-text => $helptext, -anchor => 'nw',
 		  -font => 'Helvetica 12 italic')
 	  ->pack(-anchor => 'w');
 	$self->put_it($f, undef, 1);
     } else {
 	my $l = $top->Label(-text => $text, -anchor => 'nw');
 	$self->put_it($l, undef, 1);
-	if ($self->{'balloon'} && $q->{'helpdesc'}) {
-	    $self->{'balloon'}->attach($l, -balloonmsg => $q->{'helpdesc'});
+	if ($self->{'balloon'} && $helptext) {
+	    $self->{'balloon'}->attach($l, -balloonmsg => $helptext);
 	    # XXX: change the "help" window text, which doesn't exist yet.
 	}
     }

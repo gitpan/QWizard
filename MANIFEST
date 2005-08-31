@@ -16,11 +16,15 @@ Generator/HTML/Makefile.PL
 Generator/HTML/Vertical.pm
 Generator/ReadLine.pm
 Generator/Tk.pm
+Generator/Gtk2.pm
 Generator_base/Generator.pm
 Generator_base/Makefile.PL
 Storage/CGICookie.pm
 Storage/CGIParam.pm
 Storage/Memory.pm
 Storage/Makefile.PL
+Storage/File.pm
+Storage/Base.pm
+Storage/SQL.pm
 MANIFEST.SKIP
 META.yml                                 Module meta-data (added by MakeMaker)

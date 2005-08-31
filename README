@@ -4,15 +4,16 @@ MODULE
 
 DESCRIPTION
 
-  The QWizard module allows script authors to concentrate on the content
-  of the forms they want their users to fill in without worrying about
-  the display.  It allows "Question Wizard" like interfaces to be very
-  easily created and the results of the input easily acted upon.
-  Scripts written which are entirely based on QWizard inputs are able to
-  be run from the command line which will show a Tk window or as a CGI
-  script without modification.  Script writers do not need to know which
-  interface is being used to display the resulting form(s) as it should
-  be transparent to the script itself.
+  The QWizard module allows script authors to concentrate on the
+  content of the forms they want their users to fill in without
+  worrying about the display.  It allows "Question Wizard" like
+  interfaces to be very easily created and the results of the input
+  easily acted upon.  Scripts written which are entirely based on
+  QWizard inputs are able to be run from the command line which will
+  show a Gtk2, Tk window or as a ReadLine interactive session or as a
+  CGI script without modification.  Script writers do not need to know
+  which interface is being used to display the resulting form(s) as it
+  should be transparent to the script itself.
 
   Other wizard interfaces exist for perl, but this one strives very
   hard to be both extensible and easy to code with requiring as little
@@ -30,6 +31,9 @@ PREREQUISITES
     CGI                      # (common with all perl these days)
     CGI::Cookie
 
+  Gtk2 based graphical scripts:
+    Gtk2
+
   Tk based graphical scripts:
     Tk
     Tk::Table
@@ -37,7 +41,7 @@ PREREQUISITES
     Tk::Tree                 # optional
     Tk::PNG                  # optional (for image support)
 
-  CLI support (very minimal):
+  CLI support (minimal):
     Term::ReadLine
 
   Additional features available if the modules are available:
@@ -47,17 +51,25 @@ HISTORY
 
   QWizard was originally developed within the Net-Policy network
   management system but was later made to be a separate system and is
-  now used in other applications as well.  Specifically, Net-Policy
-  had serious issues for a while trying to keep track of state between
-  long series of user input screens using the standard CGI package,
-  and the QWizard system was developed specifically to combat this
-  problem.  Net-Policy is still built on top of it making heavy use of
-  the QWizard system and offers both a HTML and a Tk network
-  management interface using the same code base.
+  now used in other applications as well.
+
+  One of the goals of Net-Policy was to create a user interface that
+  was easy to use and "wizard" driven, helping guide a user through
+  complex tasks.  The early Net-Policy code had serious issues trying
+  to keep track of state between long series of user input screens
+  using the standard CGI package, and the QWizard system was developed
+  specifically to combat this problem.  Net-Policy is still built on
+  top of it making heavy use of the QWizard system and offers both a
+  Gtk2, Tk, and HTML network management interface using the same code
+  base.
+
+  The Getopt::GUI::Long module is based on QWizard as well and offers
+  a graphical command-line input interface.
 
 FUTURE WORK
 
-  A Gtk2 interface is nearly complete, as is a curses and WAP (cell
-  phone) interface.  Once complete existing applications will not need
-  to be modified to make these interfaces work with the newer
-  infrastructure underneath them.
+  A curses and WAP (cell phone) interface have been started but aren't
+  being actively worked on (let me know if you are interested it
+  continuing it's development).  Once complete existing applications
+  will not need to be modified to make these interfaces work with the
+  newer infrastructure underneath them.

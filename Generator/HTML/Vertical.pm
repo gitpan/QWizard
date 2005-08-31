@@ -5,7 +5,7 @@ use QWizard::Generator::HTML;
 use Exporter;
 use CGI qw(escapeHTML);
 
-our $VERSION = '2.2';
+our $VERSION = '2.2.1';
 
 @QWizard::Generator::HTML::Vertical::ISA =
   qw(Exporter QWizard::Generator::HTML);
@@ -28,7 +28,16 @@ sub do_question {
 	print escapeHTML($text);
     }
     if ($q->{'helpdesc'}) {
-      print "<br><small><i>" . escapeHTML($q->{helpdesc}) . "</i></small>";
+
+      #
+      # Get the actual help text, in case this is a subroutine.
+      #
+      my $helptext = $q->{'helpdesc'};
+      if (ref($helptext) eq "CODE") {
+          $helptext = $helptext->();
+      }
+
+      print "<br><small><i>" . escapeHTML($helptext) . "</i></small>";
     }
     print "<ul>\n";
 }
