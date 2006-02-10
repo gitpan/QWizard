@@ -9,12 +9,16 @@ use QWizard::API;
    {
     title => 'Widget test screen',
     introduction => 'this is the introduction area',
+    topbar => [qw_menu('topprimenu','',
+		       [qw(menuopt1 menuopt2 menuopt3)])],
     questions =>
     [
      qw_label("label:","label text"),
      qw_paragraph("paragraph:","paragraph text " x 20),
-     qw_text('textn',"text:", default => "test input"),
-     {name => 'hidetextn', type => 'hidetext', text => 'hidetext:'},
+     qw_text('textn',"text:", default => "test input",
+	     helpdesc => 'short help'),
+     {name => 'hidetextn', type => 'hidetext', text => 'hidetext:',
+      helpdesc => 'short help', helptext => 'long help'},
      qw_textbox('textboxn',"textbox:"),
      qw_label("seperator:","should be a break after this question line"),
      "",
@@ -34,6 +38,14 @@ use QWizard::API;
        text => 'multi_checkbox:',
        labels => [qw(mcheckvalue1 mchecklabel1 mcheckvalue2 mchecklabel2)],
        name => 'multi_checkboxn'},
+
+      { type => 'bar',
+        name => 'testbar',
+        values => [[ qw_button('testbarbut','',1,'My Bar Button1'),
+		     qw_menu('testbarmenu','',['Bar Menu opt 1',
+					       'Bar Menu opt 2',])]]
+      },
+
      { type => 'table',
        text => 'table:',
        headers => [['header1','header2']],
@@ -51,6 +63,7 @@ use QWizard::API;
        text => 'button:',
        values => 'button text',
        default => 'button val'},
+
 #      { type => 'graph',
 #        text => 'graph:',
 #        values => [[1,2,3,4],[6,5,4,8]],
@@ -66,6 +79,7 @@ use QWizard::API;
 	 my @results;
 	 foreach my $i (qw(textn hidetextn textboxn checkboxn menun radion 
 			   buttonn subwidgetn fileuploadn
+			   testbarmenu testbarbut
 			   multi_checkboxnmcheckvalue1
 			   multi_checkboxnmcheckvalue2 )) {
 	     push @results,
@@ -77,5 +91,6 @@ use QWizard::API;
   );
 
 my $wiz = new QWizard(primaries => \%primaries,
+		      topbar => [qw_menu('File','',['File','opt1','opt2'])],
 		      title => "The Widget Test Wizard");
 $wiz->magic('testscreen');

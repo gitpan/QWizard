@@ -5,7 +5,7 @@ use strict;
 
 our @ISA = qw(QWizard::Storage::Memory);
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 
 sub new {
     my $class = shift;
@@ -29,13 +29,14 @@ sub save_parms {
     my $self = shift;
     return if (!$self);
     return if ($self->{'dontsave'});
-    my $vars = $self->{'vars'};
+    my $vars = $self->get_all();
     if ($self->{'file'}) {
 	open(OPFILE, ">$self->{'file'}");
 	foreach my $var (keys(%$vars)) {
 	    print OPFILE xlat_data_fw($var),"\n";
 	    print OPFILE xlat_data_fw($vars->{$var}),"\n";
 	}
+	close(OPFILE);
     }
 }
 

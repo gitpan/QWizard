@@ -21,6 +21,9 @@ DESCRIPTION
   that supports both web environments and windowing environments
   without code modification required by the script author.
 
+  See also the Getopt::GUI::Long module for an interesting use of the
+  QWizard suite.
+
 PREREQUISITES
 
   In order to make use of the different environments that QWizard can

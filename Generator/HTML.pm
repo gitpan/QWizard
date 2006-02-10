@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -34,6 +34,9 @@ our %defaults = (
 
 our $have_gd_graph = eval { require GD::Graph::lines; };
 
+our $redo_screen_js =
+  "this.form.redo_screen.value=1; this.form.submit();";
+
 sub new {
     my $type = shift;
     my ($class) = ref($type) || $type;
@@ -49,40 +52,47 @@ sub new {
 			['forced','0'],
 			['single','size'],
 			['single','maxsize'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('hidetext',\&QWizard::Generator::HTML::do_entry,
 		       [['single','name'],
 			['default'],
 			['forced','1'],
 			['single','size'],
 			['single','maxsize'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('textbox',\&QWizard::Generator::HTML::do_textbox,
 		       [['default'],
 			['single', 'width'],
 			['single', 'size'],
 			['single', 'height'],
-			['single', 'submit']]);
+			['single', 'submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('checkbox',\&QWizard::Generator::HTML::do_checkbox,
 		       [['multi','values'],
 			['default'],
-			['single', 'submit']]);
+			['single', 'submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::HTML::do_multicheckbox,
 		       [['multi','default'],
 			['values,labels'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('menu',
 		       \&QWizard::Generator::HTML::do_menu,
 		       [['values,labels', "   "],
 			['default'],
 			['single','submit'],
+			['single','refresh_on_change'],
 			['single', 'name']]);
     $self->add_handler('radio',
 		       \&QWizard::Generator::HTML::do_radio,
 		       [['values,labels'],
 			['default'],
 			['single','submit'],
+			['single','refresh_on_change'],
 			['single','name']]);
     $self->add_handler('label',
 		       \&QWizard::Generator::HTML::do_label,
@@ -102,6 +112,9 @@ sub new {
 		       \&QWizard::Generator::HTML::do_table,
 		       [['norecurse','values'],
 			['norecurse','headers']]);
+    $self->add_handler('bar',
+		       \&QWizard::Generator::HTML::do_bar,
+		       [['norecurse','values']]);
     $self->add_handler('graph',
 		       \&QWizard::Generator::HTML::do_graph,
 		       [['norecurse','values'],
@@ -168,8 +181,9 @@ sub init_screen {
 sub wait_for {
   my ($self, $wiz, $next, $p) = @_;
   print "<P><input type=submit value=\"" . escapeHTML($next) . "\">\n";
+  $self->do_hidden($wiz, "redo_screen", 0) if (!$self->qwparam('redo_screen'));
   if ($self->qwparam('allow_refresh') || $p->{'allow_refresh'}) {
-      print "<input type=submit name=redo_screen value=\"Refresh Screen\">\n";
+      print "<input type=submit onclick=\"$redo_screen_js\" name=redo_screen_but value=\"Refresh Screen\">\n";
   }
   print $self->{'cgi'}->end_form();
   return 1;
@@ -232,6 +246,7 @@ sub start_questions {
 	print "<p class=\"qwintroduction\">$intro\n<p class=\"qwintroduction\">\n";
     }
     print "<table class=\"qwquestions\">\n";
+    $self->{'intable'} = 1;
 }
 
 sub end_questions {
@@ -247,12 +262,47 @@ sub end_questions {
     print "</script>\n";
 
     $self->{'started'} = $wiz->{'started'} = 0;
+    delete($self->{'intable'});
 }
 
 sub do_pass {
     my ($self, $wiz, $name) = @_;
     $self->do_hidden($wiz, $name, $self->qwparam($name)) 
       if ($self->qwparam($name) ne '');
+}
+
+##################################################
+# Bar support
+##################################################
+
+sub start_bar {
+    my ($self, $wiz, $name) = @_;
+    if ($self->{'intable'}) {
+	print "</table>\n";
+    }
+    print "<div " . $self->do_css('qwbar',$name) . ">\n";
+}
+
+sub end_bar {
+    my ($self, $wiz, $name) = @_;
+    print "</div>\n";
+    if ($self->{'intable'}) {
+	print "<table class=\"qwquestions\">\n";
+    }
+}
+
+sub do_bar {
+    my ($self, $q, $wiz, $p, $widgets) = @_;
+
+    $self->start_bar($wiz, undef);
+    $self->do_a_table([$widgets], 0, $wiz, $q, $p);
+    $self->end_bar($wiz, 'Questions');
+}
+
+sub do_top_bar {
+    my ($self, $q, $wiz, $p, $widgets) = @_;
+
+    $self->do_a_table([$widgets], 0, $wiz, $q, $p);
 }
 
 ##################################################
@@ -265,7 +315,7 @@ sub do_button {
 }
 
 sub do_checkbox {
-    my ($self, $q, $wiz, $p, $vals, $def, $submit) = @_;
+    my ($self, $q, $wiz, $p, $vals, $def, $submit, $refresh_on_change) = @_;
     $vals = [1, 0] if ($#$vals == -1);
     my $otherstuff;
     if ($def == $vals->[0]) {
@@ -277,11 +327,15 @@ sub do_checkbox {
     if ($submit) {
 	$otherstuff .= " onclick=\"this.form.submit()\"";
     }
+    if ($refresh_on_change) {
+	$otherstuff .= " onclick=\"$redo_screen_js\"";
+    }
     print "<input" . $self->do_css('qwcheckbox',$q->{'name'}) . " type=checkbox name=\"$q->{name}\"$otherstuff>";
 }
 
 sub do_multicheckbox {
-    my ($self, $q, $wiz, $p, $defs, $vals, $labels, $submit) = @_;
+    my ($self, $q, $wiz, $p, $defs, $vals, $labels,
+	$submit, $refresh_on_change) = @_;
     print "<table>";
     my $count = -1;
     my ($startname, $endname);
@@ -291,6 +345,9 @@ sub do_multicheckbox {
 	$otherstuff .= "checked" if ($defs->[$count]);
 	if ($submit) {
 	    $otherstuff .= " onclick=\"this.form.submit()";
+	}
+	if ($refresh_on_change) {
+	    $otherstuff .= " onclick=\"$redo_screen_js\"";
 	}
 	my $l = (($labels->{$v}) ? $labels->{$v} : "$v");
 	print "<tr><td>" . escapeHTML($l)  . "</td>\n";
@@ -379,18 +436,21 @@ sub do_multicheckbox {
 }
 
 sub do_radio {
-    my ($self, $q, $wiz, $p, $vals, $labels, $def, $submit, $name) = @_;
+    my ($self, $q, $wiz, $p, $vals, $labels, $def,
+	$submit, $refresh_on_change, $name) = @_;
     my @stuff;
     push @stuff, -onclick, "this.form.submit()" if ($submit);
+    push @stuff, -onclick, "$redo_screen_js" if ($refresh_on_change);
 
     print $self->{'cgi'}->radio_group(-name => $name,
-				      -id => 'qwradio$name',
+				      -id => "qwradio$name",
 				      -class => 'qwradio',
 				      -values => $vals,
 				      -linebreak => 'true',
 				      -labels => $labels,
+				      -override => 1,
 				      -default => $def,
-				      @stuff);
+				      @stuff),"\n";
 }
 
 
@@ -425,14 +485,17 @@ sub do_paragraph {
 }
 
 sub do_menu {
-    my ($self, $q, $wiz, $p, $vals, $labels, $def, $submit, $name) = @_;
+    my ($self, $q, $wiz, $p, $vals, $labels, $def,
+	$submit, $refresh_on_change, $name) = @_;
     my @stuff;
     push @stuff, -onchange, "this.form.submit()" if ($submit);
+    push @stuff, -onchange, "$redo_screen_js" if ($refresh_on_change);
 
     print $self->{'cgi'}->popup_menu(-name => $name,
 				     -id => 'qwmenu' . $name,
 				     -class => 'qwmenu',
 				     -values => $vals,
+				     -override => 1,
 				     -labels => $labels,
 				     -default => $def,
 				     @stuff);
@@ -443,8 +506,9 @@ sub do_fileupload {
 
     push @{$wiz->{'passvars'}}, $q->{'name'} . "_qwf";
     print $self->{'cgi'}->filefield(-name => $q->{name},
-				     -id => 'qwmenu' . $q->{'name'},
-				     -class => 'qwmenu',
+				    -id => 'qwmenu' . $q->{'name'},
+				    -class => 'qwmenu',
+				    -override => 1,
 				    -default => $def);
 }
 
@@ -525,7 +589,8 @@ sub qw_upload_fh {
 }
 
 sub do_entry {
-    my ($self, $q, $wiz, $p, $name, $def, $hide, $size, $maxsize, $submit) = @_;
+    my ($self, $q, $wiz, $p, $name, $def, $hide, $size, $maxsize,
+	$submit, $refresh_on_change) = @_;
     my $otherinfo;
     if ($size) {
 	$otherinfo .= " size=\"$size\"";
@@ -543,6 +608,9 @@ sub do_entry {
     if ($submit) {
 	$otherinfo .= " onchange=\"this.form.submit()\"";
     }
+    if ($refresh_on_change) {
+	$otherinfo .= " onclick=\"$redo_screen_js\"";
+    }
 
     #
     # If the hide flag was set, we'll treat this as unprintable text.
@@ -556,7 +624,7 @@ sub do_entry {
 }
 
 sub do_textbox {
-    my ($self, $q, $wiz, $p, $def, $width, $size, $height, $submit) = @_;
+    my ($self, $q, $wiz, $p, $def, $width, $size, $height, $submit, $refresh_on_change) = @_;
     my $otherinfo;
     if ($size || $width) {
 	$size = $size || $width;
@@ -567,6 +635,9 @@ sub do_textbox {
     }
     if ($submit) {
 	$otherinfo .= " onchange=\"this.form.submit()\"";
+    }
+    if ($refresh_on_change) {
+	$otherinfo .= " onclick=\"$redo_screen_js\"";
     }
     print "<textarea" . $self->do_css('qwtextbox',$q->{'name'}) . 
       " name=\"$q->{name}\" $otherinfo>" . escapeHTML($def) . "</textarea>";
@@ -767,7 +838,12 @@ sub do_tree {
 
     my $expanded = $self->qwparam("${treename}_expanded") || $q->{'root'};
     my @expand = split(/,/, $expanded);
-    my $redo = $self->qwparam("redo_screen");
+    # redo_screen values:
+    #  1: selects a label
+    #  2: expands a branch
+    #  3: collapses a branch
+    my $redo = $self->qwparam("redoing_now");
+
     if ($redo == 2 && $self->qwparam("${treename}_collapse")) {
 	push @expand, $self->qwparam("${treename}_collapse");
     } elsif ($redo == 3 && $self->qwparam("${treename}_collapse")) {
@@ -802,8 +878,6 @@ sub do_tree {
     $self->do_hidden($wiz, "${treename}_expanded", $expanded);
     if ($self->{'first_tree'}) { #only one hidden value for redo_screen
 	$self->{'first_tree'} = 0;
-	$self->do_hidden($wiz, "redo_screen", '0');
-	$self->qwparam("redo_screen", $redo); #save the value of tree_redo
     }
     $self->do_hidden($wiz, $treename, $selected);
 
@@ -825,7 +899,9 @@ sub do_tree {
 </script>
 EOF
 
+    print "<div " . $self->do_css('qwtree',$treename) . ">\n";
     print_branch($wiz, $q, $q->{'root'}, $selected, 0, $labels, @expand);
+    print "</div>\n";
 }
 
 sub get_name {

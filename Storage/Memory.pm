@@ -5,7 +5,7 @@ use QWizard::Storage::Base;
 
 our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 
 sub new {
     my $class = shift;

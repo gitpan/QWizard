@@ -1,7 +1,7 @@
 package QWizard::Generator::Tk;
 
 use strict;
-my $VERSION = '2.2.1';
+my $VERSION = '2.2.2';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -26,7 +26,8 @@ sub new {
 			['forced','0'],
 			['single','size'],
 			['single','maxsize'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     # XXX: we need to do a real text box
     $self->add_handler('textbox',\&QWizard::Generator::Tk::do_entry,
 		       [['single','name'],
@@ -34,18 +35,21 @@ sub new {
 			['forced','0'],
 			['single','size'],
 			['single','maxsize'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('hidetext',\&QWizard::Generator::Tk::do_entry,
 		       [['single','name'],
 			['default'],
 			['forced','1'],
 			['single','size'],
 			['single','maxsize'],
-			['single','submit']]);
+			['single','submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('checkbox',\&QWizard::Generator::Tk::do_checkbox,
 		       [['multi','values'],
 			['default'],
-			['single', 'submit']]);
+			['single', 'submit'],
+			['single','refresh_on_change']]);
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::Tk::do_multicheckbox,
 		       [['multi','default'],
@@ -106,12 +110,19 @@ sub goto_top {
 
 sub goto_next {
     shift if (ref($_[0]) ne 'QWizard::Generator::Tk');
-    my ($self, $ignorefirst, $val) = @_;
-    if ($ignorefirst && ref($ignorefirst) eq 'SCALAR' && $$ignorefirst) {
-	$$ignorefirst--;
+    my ($self, $ignorefirst_or_varname, $refresh_on_change, $val) = @_;
+    if ($ignorefirst_or_varname &&
+	ref($ignorefirst_or_varname) eq 'SCALAR' && $$ignorefirst_or_varname) {
+	$$ignorefirst_or_varname--;
 	return;
-    } elsif ($ignorefirst && ref($ignorefirst) ne 'SCALAR') {
-	$self->qwparam($ignorefirst, $val);
+    } elsif (ref($ignorefirst_or_varname) ne 'SCALAR') {
+	if ($ignorefirst_or_varname) {
+	    $self->qwparam($ignorefirst_or_varname, $val);
+	}
+    }
+    if ($refresh_on_change) {
+	print STDERR "redo:!!!\n";
+	$self->qwparam('redo_screen',1);
     }
 
     $self->unmake_top();
@@ -369,7 +380,8 @@ sub get_extra_args {
 
     my @args;
 
-    if ($q->{'submit'} && $q->{type} ne 'text') {
+    if (($q->{'submit'} || $q->{'refresh_on_change'}) &&
+      $q->{type} ne 'text') {
 	my $ignorefirst = 0;
 	if ($q->{'type'} eq 'menu') {
 	    # menus do an initial call immediately after being created.
@@ -377,7 +389,8 @@ sub get_extra_args {
 	    # (did I mention "sigh"?)
 	    $ignorefirst = 1;
 	}
-	push @args, '-command', [\&goto_next, $self, \$ignorefirst];
+	push @args, '-command', [\&goto_next, $self, \$ignorefirst,
+				 $q->{'refresh_on_change'}];
     }
     return \@args;
 }
@@ -399,6 +412,7 @@ sub do_button {
     my $but = $self->{'qtable'}->Button(-text => $vals,
 					-command => [\&goto_next, 
 						     $self, $q->{'name'},
+						     $q->{'refresh_on_change'},
 						     $def]);
     $self->put_it($but);
 }

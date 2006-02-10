@@ -6,7 +6,7 @@ our @ISA = qw(QWizard::Storage::Base);
 
 our %cached_cookies = ();
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 use CGI qw(escapeHTML);
 
 sub new {
@@ -30,12 +30,12 @@ sub get_all {
 }
 
 sub set {
-    my ($self, $it) = @_;
+    my ($self, $it, $val) = @_;
     # security problems with passed in values.  escape them.
     my $str = "\n<script> document.cookie = \"" . escapeHTML($it) . "=" .
-      escapeHTML($_[0]) .
+      escapeHTML($val) .
 	"; path=/; expires=Mon, 16-Sep-2013 22:00:00 GMT\"</script>";
-    $cached_cookies{$it} = $_[0];
+    $cached_cookies{$it} = $val;
     if ($self->{'started'}) {
 	if ($#{$self->{'immediate_out'}}) {
 	    print @{$self->{'immediate_out'}};

@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -64,8 +64,10 @@ sub run_hooks {
     my $self = shift;
     my $hookname = shift;
     my @args = @_;
+    qwdebug("checking for hooks on $hookname");
     if (exists($self->{'hooks'}{$hookname})) {
 	foreach my $hook (@{$self->{'hooks'}{$hookname}}) {
+	    qwdebug("running a hook for $hookname");
 	    $hook->{'code'}($self, @{$hook->{'args'}}, \@args);
 	}
     }
@@ -301,6 +303,7 @@ sub has_actions_or_post_answers {
 
 sub keep_working {
   my ($self, @otherwise) = @_;
+  $self->run_hooks('keep_working_begin', $self, $self->{'generator'});
   if ($self->{'generator'}{'keep_working_hook'}) {
       $self->{'generator'}{'keep_working_hook'}->($self->{'generator'});
   }
@@ -324,21 +327,9 @@ sub keep_working {
   qwdebug("$num primaries ran last time\n");
 
   $self->start_page();
-
-  qwdebug("checking previous results for errors");
+  my $redisplay;
   if (qwparam('redo_screen') || !($self->check_answers($num))) {
-      if (qwparam('redo_screen')) {
-	  qwdebug("tree clicked, redoing last screen");
-      } else {
-	  qwdebug("errors found, redoing last screen");
-      }
-
-      # mark as undone again
-      $self->foreach_primary($self->{'active'},
-			     sub {
-				 $_[0]{'done'} = 0 if ($_[0]{'done'} == 2);
-			     });
-      qwparam('redo_screen',0);
+      $redisplay++;
   } else {
       if ($num > 0) {
 	  # run post_answers clauses and mark as done
@@ -347,33 +338,55 @@ sub keep_working {
 	  $self->foreach_primary($self->{'active'},
 		sub {
 		    if ($_[0]{'done'} == 2) {
-			my ($pdesc, $self) = @_;
+			my ($pdesc, $self, $redisplay) = @_;
+			my $redo;
 		        my $p = $self->get_primary($pdesc->{'name'});
 		        my $post_answers = 
 		          $p->{'post_answers'};
-
+			$post_answers = [$post_answers]
+			  if (ref($post_answers) ne 'ARRAY');
+			# stash remap tag in prim to establish context 
+			if (exists $pdesc->{'remap'}) {
+			    $p->{'remap'} = $pdesc->{'remap'};
+			}
 			# run any post_answers clauses
 		        if ($#$post_answers > -1) {
 			    # remember context for add_todos calls
 			    $self->{'context'} = $pdesc;
 		            my $results = 
 		              $self->do_list(@$post_answers);
+			    $redo += scalar(grep(/REDISPLAY/,@$results));
 		            qwdebug("results: ",join(",",@$results));
 		        }
 
 			# remap if needed
-			if ($pdesc->{'remap'}) {
+			if (exists $pdesc->{'remap'}) {
 			    my $newvars = 
 			      $self->map_primary($p, $pdesc->{'remap'}, '');
 			    push @{$self->{'pass_next'}}, @$newvars;
+			    # remove remap context from prim
+			    delete $p->{'remap'};
 			}
-
 			# mark as finished
-		        $_[0]{'done'} = 1;
-
-		    }}, $self);
+		        $_[0]{'done'} = 1 unless $redo;
+			$$redisplay += $redo;
+		    }}, $self, \$redisplay);
 	  $self->run_hooks('post_answers_end');
       }
+  }
+
+  if ($redisplay) {
+      qwdebug("redo_screen set, redoing last screen");
+
+      # mark as undone again
+      $self->foreach_primary($self->{'active'},
+			     sub {
+				 $_[0]{'done'} = 0 if ($_[0]{'done'} == 2);
+			     });
+      # remember the current value for anything that needs to process it.
+      $self->qwparam('redoing_now', $self->qwparam('redo_screen') || 1);
+      # nuke for next runs unless something resets it again.
+      $self->qwparam('redo_screen',0);
   }
 
   qwdebug("processing next primaries on the todo list");
@@ -392,6 +405,7 @@ sub keep_working {
   } else {
       $self->{'state'} = $states{'ASKING'};
   }
+  $self->qwparam('redoing_now', 0);
 
   #
   # Handle any auto-updating that's required.
@@ -436,7 +450,7 @@ sub munge_form_data {
 		my $vals = $self->get_value($q->{values});
 		if ($self->qwparam($q->{'name'}) eq $vals) {
 		    $self->qwparam($q->{'name'},
-				   $self->get_value($q->{'default'}));
+				   $self->get_value($q->{'default'}, undef, [$p, $q]));
 		}
 	    }
 	}
@@ -447,6 +461,7 @@ sub check_answers {
     my ($self, $num) = @_;
     my $ret = 1;
 
+    qwdebug("checking previous results for errors");
     if ($num > 0) {
 	$self->foreach_primary($self->{'active'},
 	    sub {
@@ -466,11 +481,13 @@ sub check_answers {
 			@args = @{$p->{check_value}}[1..$#{$p->{check_value}}];
 		    }
 		    my $err = $code->($self, $p, @args);
-		    if ($err) {
-			qwdebug("Error found in primary check_value: $err");
-			$pdesc->{'errcount'}++;
+		    if ($err and $err ne 'OK') {
 			$$ret = 0;
-			$pdesc->{'error'} = $err;
+			unless ($err eq 'REDISPLAY') {
+			    qwdebug("Error found in primary check_value:$err");
+			    $pdesc->{'errcount'}++;
+			    $pdesc->{'error'} = $err;
+			}
 		    }
 		}
 		foreach my $q (@{$p->{'questions'}}) {
@@ -488,11 +505,13 @@ sub check_answers {
 			}
 			my $err = $code->($self, $q, $p, @args);
 			if ($err && $err ne 'OK') {
-			    my $name = $q->{'name'};
-			    qwdebug("Error found in question $name: $err");
-			    $pdesc->{'errcount'}++;
 			    $$ret = 0;
-			    $pdesc->{'qerrs'}{$q->{'name'}} = $err;
+			    unless ($err eq 'REDISPLAY') {
+				my $name = $q->{'name'};
+				qwdebug("Error found in question $name: $err");
+				$pdesc->{'errcount'}++;
+				$pdesc->{'qerrs'}{$q->{'name'}} = $err;
+			    }
 			}
 		    }
 		}
@@ -549,9 +568,9 @@ sub add_todos {
     }
 }
 
-# Takes a list of "stuff" and executes it.  code snippets returns
-# errors, and strings may be include directly in the list which will
-# be returned as comments/output to the user
+# Takes a list of "stuff" and executes it.  Code snippets return
+# errors, and strings may be included directly in the list which will
+# be returned as comments/output to the user.
 sub do_list {
     my $self = shift;
     my @ret;
@@ -584,10 +603,13 @@ sub do_list {
 
 sub do_actions {
     my ($self) = @_;
+    $self->run_hooks('actions_begin');
     $self->{'generator'}->start_actions($self);
     qwdebug("actions: ", Dumper($self->{'active'}));
     $self->do_primary_actions($self->{'active'}, 0);
+    $self->run_hooks('before_actions_end');
     $self->{'generator'}->end_actions($self);
+    $self->run_hooks('actions_end');
 }
 
 sub do_action_conform {
@@ -623,7 +645,10 @@ sub do_primary_action_list {
 	}
     } else {
 	if (exists($p->{'actions'})) {
-	    $results = $self->do_list(@{$p->{'actions'}});
+	    my $actions = $p->{'actions'};
+	    $actions = [$actions]
+	      if (ref($actions) ne 'ARRAY');
+	    $results = $self->do_list(@$actions);
 	    foreach my $r (@$results) {
 		next if ($r eq 'OK');
 		if ($r =~ /Error: (.*)/) {
@@ -786,6 +811,12 @@ sub pass_vars {
     qwdebug("vars to process: $vars");
     if (defined($vars)) {
 	foreach my $i (split(/,/,$vars), @{$self->{pass_next}}) {
+	    if ($self->{'generator'}->skip_storage($i)) {
+		# we were asked to skip this particular variable for
+		# future use.
+		delete $newvars->{$i};
+		next;
+	    }
 	    next if ($newvars->{$i}); # already handled
 	    $newvars->{$i} = 1;
 	    qwdebug("passing on: $i -> ", qwparam($i));
@@ -805,18 +836,19 @@ sub pass_vars {
 # returns a list of values based on an array of values, code, and
 # arrays containing code and parameters.
 sub get_values {
-  my ($self, $vals, $norecurs) = @_;
+  my ($self, $vals, $norecurs, $extra_args) = @_;
   my @values;
   return [] if (!defined($vals));
   if (ref($vals) eq "ARRAY") {
     if (ref($vals->[0]) eq "CODE") {
-      my $cd = shift @$vals;
+      my @args = @$vals;
+      my $cd = shift @args;
+      push(@args, @$extra_args) if ref($extra_args) eq "ARRAY";
       if ($norecurs) {
-	  push @values, @{$cd->($self, @$vals)};
+	  push @values, @{$cd->($self, @args)};
       } else {
-	  push @values, @{$self->get_values($cd->($self, @$vals))};
+	  push @values, @{$self->get_values($cd->($self, @args))};
       }
-      unshift @$vals, $cd;  # we must leave $vals as we found it.
     } else {
       if ($norecurs) {
 	  push @values, @$vals;
@@ -826,9 +858,9 @@ sub get_values {
     }
   } elsif (ref($vals) eq "CODE") {
       if ($norecurs) {
-	  push @values, @{$vals->($self)};
+	  push @values, @{$vals->($self, $extra_args)};
       } else {
-	  push @values, @{$self->get_values($vals->($self))};
+	  push @values, @{$self->get_values($vals->($self, $extra_args))};
       }
   } elsif (ref($vals) eq 'HASH') {
     @values = ($vals);
@@ -841,8 +873,8 @@ sub get_values {
 
 # same as get_values, but truncates return list to a single value.
 sub get_value {
-  my ($self, $vals, $norecurse) = @_;
-  return ${$self->get_values($vals, $norecurse)}[0];
+  my ($self, $vals, $norecurse, $extra_args) = @_;
+  return ${$self->get_values($vals, $norecurse, $extra_args)}[0];
 }
 
 sub get_values_from_labels {
@@ -912,6 +944,35 @@ sub make_help_link {
     return "<a target=\"helpwin\" onClick=\"window.open('$top','helpwin','width=500,height=300,toolbar=0,status=1')\" href=\"$top\">";
 }
 
+sub build_dynamic_questions {
+    my ($self, $p, $newqs, @questions) = @_;
+
+    # generate dynamic questions
+    foreach my $q (@questions) {
+	# XXX: use arrays to mean something else special in the future?
+	if (ref($q) ne "HASH") {
+	    # question is not a normal hash, push it on anyway
+	    #  (labels and separators are strings)
+	    push @$newqs, $q;
+	} elsif ($q->{type} eq 'dynamic') {
+	    # question is a dynamic question
+	    qwdebug("Expanding a dynamic");
+	    if ($q->{'doif'} && ! $q->{'doif'}->($q, $self, $p)) {
+		qwdebug("Dynamic question skipped");
+		next;
+	    }
+	    #		  my $v = $self->get_values($q->{values});
+	    my @dynamicqs = @{$self->get_values($q->{values})};
+
+	    # allow for sub-expansion of these questions as well: recursion
+	    $self->build_dynamic_questions($p, $newqs, @dynamicqs);
+	} else {
+	    # question is a normal hash, and not dynamic.  push it on.
+	    push @$newqs, $q;
+	}
+    }
+}
+
 # collects data
 sub ask_questions {
     my ($self) = @_;
@@ -942,10 +1003,21 @@ sub ask_questions {
 	if (ref($p) ne "HASH") {
 	    qwdebug("ERROR: primary $pdesc->{'name'} does not exist\n");
 	    # XXX: not portable error code
-	    print "QWizard Error.  called on $pdesc->{name} which doesn't exist";
-	    return 0;
+	    print "QWizard Error.  called on primary $pdesc->{name} which doesn't exist";
+	    $pdesc->{'done'} = 2;
+	    die if (!$self->{'skip_bad_primary_requests'});
+	    next;
 	}
-
+	
+	if (exists($p->{'doif'}) && ! $p->{'doif'}->(undef, $self, $p)) {
+	    qwdebug("Primary skipped by doif result");
+	    $pdesc->{'done'} = 2;
+	    next;
+	}
+	# stash remap tag in prim to establish context 
+	if (exists $pdesc->{'remap'}) {
+	    $p->{'remap'} = $pdesc->{'remap'};
+	}
 	qwdebug("Processing Primary (more=$repeat): " . 
 		($p->{name} || $p->{title})); 
 	if ($p->{'take_over'}) {
@@ -971,33 +1043,32 @@ sub ask_questions {
 	    }
 	}
 	$count++;
+	if (($p->{'topbar'} || $self->{'topbar'}) && 
+	    UNIVERSAL::can($self->{'generator'}, 'do_top_bar')) {
+	    my @barobjects;
+	    @barobjects = ($self->{'topbar'})
+	      if (ref($self->{'topbar'}) ne 'ARRAY');
+	    @barobjects = @{$self->{'topbar'}}
+	      if (ref($self->{'topbar'}) eq 'ARRAY');
+	    push @barobjects, ($p->{'topbar'})
+	      if (ref($p->{'topbar'}) ne 'ARRAY');
+	    push @barobjects, @{$p->{'topbar'}}
+	      if (ref($p->{'topbar'}) eq 'ARRAY');
+	    $self->{'generator'}->do_top_bar(undef, $self, $p, \@barobjects);
+	}
 	if ($p->{'questions'}) {
 	  $self->{'qcount'} = -1;
 	  qwdebug("starting queston processing/display");
 	  $self->run_hooks('ask_questions_begin');
 	  $self->{'generator'}->start_questions($self, $p,
-						$self->unparamstr($self->get_value($p->{title})),
-						(qwpref('pref_intro') ne '0' ? $self->unparamstr($self->get_value($p->{introduction})) : ""));
+						$self->unparamstr($self->get_value($p->{title},undef,[$p])),
+						(qwpref('pref_intro') ne '0' ? $self->unparamstr($self->get_value($p->{introduction},undef,[$p])) : ""));
 	  $self->run_hooks('ask_questions_started');
 	  my @questions = @{$p->{'questions'}};
 	  my ($q, @newqs);
 
-	  # generate dynamic questions
-	  foreach $q (@questions) {
-	      if (ref($q) ne "HASH") {
-		  push @newqs, $q;
-	      } elsif ($q->{type} eq 'dynamic') {
-		  qwdebug("Expanding a dynamic");
-		  if ($q->{'doif'} && ! $q->{'doif'}->($q, $self, $p)) {
-		      qwdebug("Dynamic question skipped");
-		      next;
-		  }
-		  #		  my $v = $self->get_values($q->{values});
-		  push @newqs, @{$self->get_values($q->{values})};
-	      } else {
-		  push @newqs, $q;
-	      }
-	  }
+	  $self->build_dynamic_questions($p, \@newqs, @questions);
+
 	  if ($pdesc->{'error'}) {
 	      $self->{'generator'}->do_error('', $self, $p, $pdesc->{'error'});
 	      delete $pdesc->{'error'};
@@ -1032,6 +1103,8 @@ sub ask_questions {
 	}
 	$repeat--;
 	$pdesc->{'done'} = 2;
+	# remove remap context from prim
+	delete $p->{'remap'} if exists $p->{'remap'};
 
 	if ($repeat <= 0) {
 	    qwdebug("Done processing screen's primaries ");
@@ -1070,6 +1143,52 @@ sub ask_questions {
     return 1;
 }
 
+sub do_widget {
+    my ($self, $q, $p, $def) = @_;
+	# have the generator display the question widget based on the type
+    my $typemap =
+      $self->{'generator'}->get_handler($q->{'type'} || 'text',$q);
+    if ($typemap) {
+	# The generator supplied its own function and what it
+	# wants to receive argument-wise.
+	my $arguments =
+	  $self->{'generator'}->get_arguments($self, $q,
+					      $typemap->{'argdef'}, $def);
+	$typemap->{'function'}->($self->{'generator'}, $q, $self, $p, 
+				 @$arguments);
+    } elsif ($q->{type} eq "hidden") {
+	$self->{'generator'}->do_hidden($self, $q->{'name'},
+					$def || $self->get_value($q->{values}));
+	if ($q->{text}) {
+	    $self->{'generator'}->do_label($q, $self, $p,
+					   [$q->{text}],
+					   $def);
+	}
+    } elsif ($q->{type} eq "raw") {
+	print $self->get_value($q->{values}, $def);
+    } elsif ($q->{type} eq "tree") {
+	$self->{'generator'}->do_tree($q, $self, $p,
+				      $self->get_labels($q));
+    } else {
+	$typemap =
+	  $self->{'generator'}->get_handler('unknown',$q);
+	if ($typemap) {
+	    # The generator supplied its own error handling function
+	    my $arguments =
+	      $self->{'generator'}->get_arguments($self, $q,
+						  $typemap->{'argdef'},
+						  $def);
+	    $typemap->{'function'}->($self->{'generator'}, $q, $self, $p, 
+				     @$arguments);
+	} else {
+	    print STDERR "Unsupported question type ($q->{type})\n";
+	}
+	qwdebug("Unsupported question type ($q->{type})");
+	qwdebug(Dumper($q));
+	return;
+    }
+}
+
 sub ask_question {
     my ($self, $p, $q) = @_;
 
@@ -1081,6 +1200,7 @@ sub ask_question {
 
     if (ref($q) ne "HASH") {
 	$self->{'generator'}->do_separator($q, $self, $p, $q);
+	return;
     } else {
 	qwdebug("Processing Question: " . 
 		sprintf("%-10s %s", ($q->{type} || "text"),
@@ -1097,19 +1217,19 @@ sub ask_question {
 	# the user if an error occurred and we're redisplaying the
 	# question (or repeating it for a tree).
 	my $def;
-	if ($self->{'errs'} || $self->qwparam('redo_screen')) {
+	if ($self->qwparam('redoing_now')) {
 	    $def = $self->qwparam($q->{'name'});
-	    qwdebug("  pulling original: $def\n");
+	    qwdebug("  pulling original: $q->{name}: $def\n");
 	} else {
 	    if (qwparam($q->{'name'}) &&
 		!$q->{'override'} && !$self->{'override'}) {
 		print STDERR "*** QWizard: Warning redefining value from question named $q->{name} (value was: " . qwparam($q->{'name'}) . ").  This may or may not have been intentional.  Add the 'override' flag to the second question, or rename the parent's question, to turn off this warning in the future\n";
 	    }
-	    $def = $self->get_value($q->{default});
+	    $def = $self->get_value($q->{default}, undef, [$p, $q]);
 	}
 
 	# display the error
-	if (exists($pdesc->{'qerrs'}{$q->{'name'}})) {
+	if ($pdesc && exists($pdesc->{'qerrs'}{$q->{'name'}})) {
 	    $self->{'generator'}->do_error($q, $self, $p,
 					   $pdesc->{'qerrs'}{$q->{'name'}});
 	    delete $pdesc->{'qerrs'}{$q->{'name'}};
@@ -1120,48 +1240,7 @@ sub ask_question {
 					  $self->unparamstr($self->get_value($q->{text})),
 					  $self->{'qcount'});
 
-	# have the generator display the question widget based on the type
-	my $typemap =
-	  $self->{'generator'}->get_handler($q->{'type'} || 'text',$q);
-	if ($typemap) {
-	    # The generator supplied its own function and what it
-	    # wants to receive argument-wise.
-	    my $arguments =
-	      $self->{'generator'}->get_arguments($self, $q,
-						  $typemap->{'argdef'}, $def);
-	    $typemap->{'function'}->($self->{'generator'}, $q, $self, $p, 
-				     @$arguments);
-	} elsif ($q->{type} eq "hidden") {
-	    $self->{'generator'}->do_hidden($self, $q->{'name'},
-					    $def || $self->get_value($q->{values}));
-	    if ($q->{text}) {
-		$self->{'generator'}->do_label($q, $self, $p,
-					       [$q->{text}],
-					       $def);
-	    }
-	} elsif ($q->{type} eq "raw") {
-	    print $self->get_value($q->{values}, $def);
-	} elsif ($q->{type} eq "tree") {
-	    $self->{'generator'}->do_tree($q, $self, $p,
-					  $self->get_labels($q));
-	} else {
-	    my $typemap =
-	      $self->{'generator'}->get_handler('unknown',$q);
-	    if ($typemap) {
-		# The generator supplied its own error handling function
-		my $arguments =
-		  $self->{'generator'}->get_arguments($self, $q,
-						      $typemap->{'argdef'},
-						      $def);
-		$typemap->{'function'}->($self->{'generator'}, $q, $self, $p, 
-					 @$arguments);
-	    } else {
-		print STDERR "Unsupported question type ($q->{type})\n";
-	    }
-	    qwdebug("Unsupported question type ($q->{type})");
-	    qwdebug(Dumper($q));
-	    return;
-	}
+	$self->do_widget($q, $p);
 	# return the name
 	$self->{'generator'}->do_question_end($q, $self, $p, $self->{'qcount'});
 	return $q->{'name'};
@@ -1221,6 +1300,19 @@ sub start_page {
   $self->run_hooks('start_page_end');
 }
 
+sub print_stack_trace {
+    print STDERR "stack trace:\n";
+    for (my $i = 1; $i <= 10; $i++) {
+	my @callinfo = caller($i);
+	print STDERR "  $callinfo[0] $callinfo[1]:$callinfo[2] sub:$callinfo[3]\n";
+    }
+}
+
+sub forget_param {
+    my $self = shift;
+    $self->{'generator'}->forget_param(@_);
+}
+
 sub qwparam {
     my $it = shift;
     my $self;
@@ -1235,8 +1327,7 @@ sub qwparam {
 
     if (!$generator) {
 	print STDERR "QWizard::qwparam:  no generator\n";
-	print STDERR "error at qwparam:",join(",",caller(1)),"\n";
-
+	print_stack_trace();
 	return("");
     }
 
@@ -1257,7 +1348,7 @@ sub qw_upload_fh {
 
     if (!$generator) {
 	print STDERR "QWizard::qw_upload_fh:  no generator\n";
-	print STDERR "error at qw_upload_fh:",join(",",caller(1)),"\n";
+	print_stack_trace();
 
 	return("");
     }
@@ -1279,7 +1370,7 @@ sub qw_upload_file {
 
     if (!$generator) {
 	print STDERR "QWizard::qw_upload_fh:  no generator\n";
-	print STDERR "error at qw_upload_fh:",join(",",caller(1)),"\n";
+	print_stack_trace();
 
 	return("");
     }
@@ -1300,7 +1391,7 @@ sub qwpref {
 
     if (!$generator) {
 	print STDERR "QWizard::qwpref: no generator\n";
-	print STDERR "error at qwpref:",join(",",caller(1)),"\n";
+	print_stack_trace();
 	return("");
     }
     return $generator->qwpref($it, @_);
@@ -1448,6 +1539,8 @@ sub maybe_start_remap {
 	$self->map_primary($prim, "NETPOLICYSave" . $remapname, '');
 	# restore remapped data
 	$self->map_primary($prim, '', $remapname);
+        # stash remap tag in primary to establish context for actions
+        $prim->{'remap'} = $remapname;
     }
 }
 
@@ -1458,6 +1551,8 @@ sub maybe_end_remap {
 	$self->map_primary($prim, $remapname, '');
 	# restore saved state
 	$self->map_primary($prim, '', "NETPOLICYSave" . $remapname);
+	# remove remap context from prim
+        delete $prim->{'remap'};
     }
 }
 
@@ -1901,6 +1996,13 @@ initializing data.
 
 This function will be called just after a set of questions is displayed.
 
+=item topbar
+
+A place to add extra widgets to a primary at the very top.
+
+See the I<bar> documentation in the I<QUESTION DEFINITIONS> section
+below for details on this field.
+
 =back
 
 =head2 PRIMARIES DEFINITION
@@ -2027,9 +2129,9 @@ for more information on the I<add_todos>() function, but the above
 will add the 'primary1' screen to the list of screens to display for the user
 before the wizard is finished.
 
-# A post_answers subroutine B<MUST> return the word "OK" for it to be
-# successful.  Returning anything else will print the result, as if it
-# is an error message, to the user.
+A post_answers subroutine B<MUST> return the word "OK" for it to be
+successful.  Returning anything else will print the result, as if it
+is an error message, to the user.
 
 For HTML output, these will be run just before the next screen is
 printed after the user has submitted the answers back to the web
@@ -2071,6 +2173,22 @@ that includes the function:
 
   sub { $_[0]->add_todos('subname1', ...); }
 
+=item doif => sub { LOGIC }
+
+Allows primaries to be I<optional> and only displayed under certain
+conditions.
+
+If specified, it should be a CODE reference which when executed should
+return a 1 if the primary is to be displayed or a 0 if not.  The
+primary will be entirely skipped if the CODE reference returns a 0.
+
+=item topbar
+
+A place to add extra widgets to a primary at the very top.
+
+See the I<bar> documentation in the I<QUESTION DEFINITIONS> section
+below for details on this field.
+
 =item take_over => \&subroutine
 
 This hash value lets a subroutine completely take control of processing
@@ -2104,6 +2222,9 @@ between the previous question and the next question.
 
 The fields available to question types are given below.  Unless otherwise
 stated, the fields are available to all question types.
+
+Also, see the I<QWizard_Widgets> manual page for more information
+about the Generators and the questions that each one supports.
 
 =over
 
@@ -2299,6 +2420,54 @@ I<values> clause.
 The button widget will be equivalent to pressing the next button.  The next
 primary will be shown after the user presses the button.
 
+=item bar
+
+A bar widget is functionally a separator in the middle of the list of
+questions.  It is useful for breaking a set of questions in two as
+well as providing button-containers or menu containers within widget
+sets and not having them tied to the normal QWizard left/right feel.
+One intentional artifact of this is they can be used to provide a
+visual difference between the flow of the questions.  EG, if the
+QWizard primary showed a screen which had two questions in it, it
+would look something like the following when displayed by most of the
+generators that exist today:
+
+  +-------------------+-----------------+
+  | Question 1        |	Answer Widget 1 |
+  | Longer Question 2 |	Answer Widget 2 |
+  +-------------------+-----------------+
+
+Adding a bar in the middle of these questions, however, would break
+the forced columns above into separate pieces:
+
+  +------------+------------------------+
+  | Question 1 | Answer Widget 1        |
+  +------------+------------------------+
+  |               BAR                   |
+  +-------------------+-----------------+
+  | Longer Question 2 | Answer Widget 2 |
+  +-------------------+-----------------+
+
+Finally, there is an implicit I<top> bar in every primary and the
+QWizard object as a whole.  You can push objects onto this bar by
+adding objects to the $qwizard->{'topbar'} array or by adding objects
+to a primary's 'topbar' tag.  E.G.
+
+  my $qw = new QWizard(primaries => \%primaries,
+		       topbar => [
+				  {
+				   type => 'menu', name => 'menuname',
+				   values => [qw(1 2 3 4)],
+				   # ...
+				  }]);
+
+The widgets shown in the topbar will be a merge of those from the
+QWizard object and the primary currently being displayed.
+
+TODO: make it work better with merged primaries
+
+TODO: make a bottom bar containing the next/prev/cancel buttons
+
 =item hidden
 
 This clause is used to set internal parameters (name => value), but these
@@ -2367,11 +2536,15 @@ reference which will be called to calculate and return the value.
 
 =item check_value => \&subroutine
 
-A script to check the answer submitted by the user for legality.  It should
-return a string if the value submitted was not legal.  The string will be
-shown to the user as an error message that the user must fix before being
-allowed to proceed further in the wizard screens.  The current primary screen
-will be repeated until the function returns no error.
+A script to check the answer submitted by the user for legality.  The
+script should return 'OK' to indicate no error found. In the event an
+error is detected, it should return an error string.  The string will
+be shown to the user as an error message that the user must fix before
+being allowed to proceed further in the wizard screens. Alternately,
+the script may return 'REDISPLAY' to indicate no error but that screen
+should be redisplyed (perhaps with new values set with qwparam() from
+within the script). In the case of error or 'REDISPLAY', the current
+primary screen will be repeated until the function returns 'OK'.
 
 The arguments passed to the function are the reference to the wizard,
 a reference to the question definition (the hash), and a reference
@@ -2422,6 +2595,15 @@ the given ranges.
 
 =back
 
+=item doif => sub { LOGIC }
+
+Allows questions to be I<optional> and only displayed under certain
+conditions.
+
+If specified, it should be a CODE reference which when executed should
+return a 1 if the question is to be displayed or a 0 if not.  The
+question will be entirely skipped if the CODE reference returns a 0.
+
 =item helptext
 =item helpdesc
 
@@ -2430,6 +2612,26 @@ be short descriptions printed on screen when the wizard screen is displayed,
 and I<helptext> should be a full length description of help that will be
 displayed only when the user clicks on the help button.  I<helpdescr> is
 optional, and a button will be shown linking to I<helptext> regardless.
+
+=item submit => 1
+
+When this is specified as a question argument, if the user changes the
+value then it will also be the equivelent of pressing the 'Next'
+button at the same time.  With the HTML generator, this requires
+javascript and thus you shouldn't absolutely depend on it working.
+
+=item refresh_on_change
+
+If the contents of a screen are generated based on data extracted from
+dynamically changing sources (e.g., a database), then setting this
+parameter to 1 will make the current question force a refresh if the
+value changes (ie, when they pull down a menu and change the value or
+click on a checkbox or ...) and the screen be redrawn (possibly
+changing its contents).
+
+As an example, Net-Policy uses this functionality to allow users to
+redisplay generated data tables and changes the column that is used
+for sorting depending on a menu widget.
 
 =back
 
@@ -2687,7 +2889,7 @@ Wes Hardaker, hardaker@users.sourceforge.net
 
 =head1 SEE ALSO
 
-perl(1)
+perl(1), QWizard_Widgets
 
 Net-Policy: http://net-policy.sourceforge.net/
 

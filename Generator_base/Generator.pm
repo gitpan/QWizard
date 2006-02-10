@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 use QWizard::Storage::Memory;
 require Exporter;
 
@@ -155,6 +155,31 @@ sub revert_params {
     }
 }
 
+#
+# called by QWizard::pass_vars() to determine if we not be passing on
+# particular variables.
+#
+sub skip_storage {
+    my ($self, $skiptok) = @_;
+    if (exists($self->{'delete_tokens'}) &&
+	exists($self->{'delete_tokens'}{$skiptok})) {
+	delete $self->{'delete_tokens'}{$skiptok};
+	return 1;
+    }
+    return 0;
+}
+
+#
+# potentially called by post_answers primary code to forget about a
+# particular variable and not pass it on to forward screens.
+#
+sub forget_param {
+    my $self = shift;
+    map { $self->{'datastore'}->set($_,'');
+	  $self->{'delete_tokens'}{$_} = 1
+      } @_;
+}
+
 sub do_hidden {
     my ($self, $wiz, $name, $val) = @_;
     $self->{'datastore'}->set($name, $val);
@@ -178,6 +203,33 @@ sub add_handler {
     my ($self, $type, $fn, $argdef) = @_;
     $self->{'typemap'}{$type}{'function'} = $fn;
     $self->{'typemap'}{$type}{'argdef'} = $argdef;
+}
+
+sub get_supported_tags {
+    my ($self) = @_;
+    return keys(%{$self->{'typemap'}});
+}
+
+sub print_handler_tags {
+    my ($self, $tokformat, $nameformat, $endtext) = @_;
+    $tokformat = "  %-20s %-10s\n" if (!$tokformat);
+    $nameformat = "%s arguments:\n" if (!$nameformat);
+    foreach my $t (sort keys(%{$self->{'typemap'}})) {
+	printf($nameformat, $t);
+	foreach my $arg (@{$self->{'typemap'}{$t}{'argdef'}}) {
+	    next if ($arg->[0] eq 'forced');
+	    my @tagargs = @$arg;
+	    if ($#tagargs == 0) {
+		push @tagargs, "single";
+	    } else {
+		my $swapit = $tagargs[0];
+		$tagargs[0] = $tagargs[1];
+		$tagargs[1] = $swapit;
+	    }
+	    printf($tokformat, @tagargs);
+	}
+	print $endtext if ($endtext);
+    }
 }
 
 #

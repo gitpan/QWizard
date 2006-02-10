@@ -5,7 +5,7 @@ use QWizard::Storage::Base;
 
 our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.2.2';
 
 our %default_opts =
   (
@@ -32,8 +32,24 @@ sub new {
 
 sub create_table {
     my $self = shift;
-    print "create table $self->{table} (id int, $self->{namecol} varchar(255), $self->{valcol} varchar(4096))\n";
-    my $ct = $self->{'dbh'}->prepare("create table $self->{table} (id int, $self->{namecol} varchar(255), $self->{valcol} varchar(4096))");
+
+    my $xret;					# Return code from execute().
+
+						# Table existence check command.
+    my $chk = $self->{'dbh'}->prepare("select * from $self->{table}");
+
+						# Table creation command.
+    my $ct = $self->{'dbh'}->prepare("create table $self->{table} (id int, $self->{namecol} varchar(255), $self->{valcol} varchar(65536))");
+
+    #
+    # Return without doing anything if the specified table exists.
+    #
+    $xret = $chk->execute();
+    return if($xret == 1);
+
+    #
+    # Create the table.
+    #
     $ct->execute();
 }
 
@@ -57,7 +73,6 @@ sub set {
     $self->{'cnth'}->execute($it);
     my $vals = $self->{'cnth'}->fetchrow_arrayref();
     $self->{'cnth'}->finish;
-    print "$it -> $value -> $vals->[0]\n";
     if ($vals->[0] == 0) {
 	$self->{'insh'}->execute($it, $value);
     } else {

@@ -2,6 +2,8 @@ README
 MANIFEST
 Makefile.PL
 QWizard.pm
+QWizard_Widgets.pod
+qw-widgets
 examples/guessing_game.pl
 examples/number_adding.pl
 examples/widget-test-screen.pl
@@ -26,5 +28,7 @@ Storage/Makefile.PL
 Storage/File.pm
 Storage/Base.pm
 Storage/SQL.pm
+Plugins/Bookmarks.pm
+Plugins/Makefile.PL
 MANIFEST.SKIP
 META.yml                                 Module meta-data (added by MakeMaker)
