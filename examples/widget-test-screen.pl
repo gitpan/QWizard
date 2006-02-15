@@ -34,6 +34,15 @@ use QWizard::API;
      { type => 'fileupload',
        text => 'fileupload:',
        name => 'fileuploadn',},
+     { type => 'filedownload',
+       text => 'Download a file:',
+       name => 'bogusdown',
+       datafn => 
+       sub { 
+	   my $fh = shift;
+	   print $fh "hello world: menun=" . qwparam('menun') . "\n";
+       }
+     },
      { type => 'multi_checkbox',
        text => 'multi_checkbox:',
        labels => [qw(mcheckvalue1 mchecklabel1 mcheckvalue2 mchecklabel2)],

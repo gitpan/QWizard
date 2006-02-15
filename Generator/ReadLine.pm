@@ -5,7 +5,7 @@ require Exporter;
 use QWizard::Generator;
 
 use strict;
-our $VERSION = '2.2.2';
+our $VERSION = '2.2.3';
 
 @QWizard::Generator::ReadLine::ISA = qw(Exporter QWizard::Generator);
 

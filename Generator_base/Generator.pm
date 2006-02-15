@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '2.2.2';
+our $VERSION = '2.2.3';
 use QWizard::Storage::Memory;
 require Exporter;
 
@@ -281,6 +281,12 @@ sub get_arguments {
 	} elsif ($def->[0] eq 'labels') {
 	    if (exists($q->{$def->[1]})) {
 		push @args, $wiz->get_labels($q);
+	    } else {
+		push @args, $def->[2];
+	    }
+	} elsif ($def->[0] eq 'noexpand') {
+	    if (exists($q->{$def->[1]})) {
+		push @args, $q->{$def->[1]};
 	    } else {
 		push @args, $def->[2];
 	    }

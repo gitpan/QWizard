@@ -1,10 +1,11 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '2.2.2';
+my $VERSION = '2.2.3';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
+use IO::File;
 
 @QWizard::Generator::Gtk2::ISA = qw(Exporter QWizard::Generator);
 
@@ -96,11 +97,16 @@ sub new {
 		       \&QWizard::Generator::Gtk2::do_button,
 		       [['single','values'],
 			['default']]);
-    # XXX: proper fileupload widget
     $self->add_handler('fileupload',
 		       \&QWizard::Generator::Gtk2::do_fileupload,
 		       [['single','name'],
 			['default']]);
+    $self->add_handler('filedownload',
+		       \&QWizard::Generator::Gtk2::do_filedownload,
+		       [['single','name'],
+			['default'],
+			['single','data'],
+			['noexpand','datafn']]);
     # XXX: file upload params
     #[['default','values']]);
     if (0) {
@@ -177,12 +183,16 @@ sub remove_all_table_entries {
     $self->{'qframe'} = $self->{'frames'}[0];
 }
 
+# Note: NOT called as a generator-> object.  First arg is expected to
+# be a widget.
 sub goto_refresh {
     my $self = shift;
-    $self->qwparam('redo_screen',1);
-    $self->goto_next(@_);
+    $self->{'generator'}->qwparam('redo_screen',1);
+    goto_next($self, @_);
 }
 
+# Note: NOT called as a generator-> object.  First arg is expected to
+# be a widget.
 sub goto_next {
     my $self = shift;
     if ($self->{'qbuttonname'}) {
@@ -193,6 +203,8 @@ sub goto_next {
     Gtk2->main_quit();
 }
 
+# Note: NOT called as a generator-> object.  First arg is expected to
+# be a widget.
 sub goto_prev {
     my ($self) = @_;
     $self->{'generator'}->revert_params();
@@ -487,8 +499,24 @@ sub do_button {
     my $but = Gtk2::Button->new($vals);
     $but->signal_connect(clicked => \&goto_next);
     $but->{'qbuttonname'} = $q->{'name'};
+    $but->{'qbuttonval'} = $def || $q->{'default'}; # XXX: hack for refresh; doesn't deal with code refs properly though.  ugh.
+    $but->{'generator'} = $self;
+    $self->put_it($but);
+}
+
+sub do_filedownload {
+    my ($self, $q, $wiz, $p, $name, $def, $data, $datafn) = @_;
+
+    # A file upload box is created via a button to request a file.
+
+    my $but = Gtk2::Button->new($def || 'Output To File...');
+    $but->signal_connect(clicked => \&create_filedownload_screen);
+    $but->{'qbuttonname'} = $q->{'name'};
     $but->{'qbuttonval'} = $def;
     $but->{'generator'} = $self;
+    $but->{'parent_button'} = $but;
+    $but->{'data'} = $data;
+    $but->{'datafn'} = $datafn;
     $self->put_it($but);
 }
 
@@ -531,6 +559,60 @@ sub create_fileupload_screen {
 			       # (truncate just to file name first).
 			       $val =~ s/.*\///;
 			       $_[0]->{'parent_button'}->set_label($val);
+			   });
+
+    # define the action for the Cancel button.
+    my $can = $fs->cancel_button;
+    $can->{'pwidget'} = $fs;
+    $can->{'generator'} = $parent_button->{'generator'};
+    $can->{'qwname'} = $parent_button->{'qwname'};
+    $can->signal_connect('clicked' =>
+			   sub {
+			       # close the widget
+			       $_[0]->{'pwidget'}->hide_all;
+			   });
+    $fs->show_all;
+}
+
+sub create_filedownload_screen {
+    my ($parent_button) = @_;
+
+    # create the widget screen
+    my $fs = Gtk2::FileSelection->new("Select a file");
+
+    # define the action for the Ok button.
+    my $ok = $fs->ok_button;
+    $ok->{'pwidget'} = $fs;
+    $ok->{'generator'} = $parent_button->{'generator'};
+    $ok->{'qwname'} = $parent_button->{'qbuttonname'};
+    $ok->{'data'} = $parent_button->{'data'};
+    $ok->{'datafn'} = $parent_button->{'datafn'};
+    $ok->{'parent_button'} = $parent_button;
+    $ok->signal_connect('clicked' =>
+			   sub {
+			       my $but = $_[0];
+
+			       # open the file to save the data in
+			       my $filename = $but->{'pwidget'}->get_filename();
+			       my $fileh = new IO::File;
+			       $fileh->open(">" . $filename);
+
+			       # save the question data field
+			       if ($but->{'data'}) {
+				   print $fileh $but->{'data'};
+			       }
+
+			       # call the datafn routine as well
+			       if ($but->{'datafn'} &&
+				   ref($but->{'datafn'}) eq 'CODE') {
+				   $but->{'datafn'}($fileh, $filename)
+			       }
+
+			       # close the output file
+			       $fileh->close();
+
+			       # close the widget
+			       $_[0]->{'pwidget'}->hide_all;
 			   });
 
     # define the action for the Cancel button.

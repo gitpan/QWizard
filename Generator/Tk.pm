@@ -1,7 +1,7 @@
 package QWizard::Generator::Tk;
 
 use strict;
-my $VERSION = '2.2.2';
+my $VERSION = '2.2.3';
 use Tk;
 use Tk::Table;
 use Tk::Pane;

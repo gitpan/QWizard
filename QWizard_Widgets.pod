@@ -99,6 +99,7 @@ generators make use of.
   |bar           |X   |X   |  |        |
   |button        |X   |X   |X |        |
   |checkbox      |X   |X   |X |X       |
+  |filedownload  |    |X   |  |        |
   |fileupload    |X   |X   |X |X       |
   |graph         |X   |X   |X |        |
   |hidetext      |X   |X   |X |        |
@@ -374,6 +375,20 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 =item submit => single  
 
 =item refresh_on_change => single  
+
+=back
+
+=item filedownload
+
+=over
+
+=item name => single  
+
+=item default => single  
+
+=item data => single  
+
+=item datafn => noexpand  
 
 =back
 

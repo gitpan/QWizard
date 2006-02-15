@@ -5,7 +5,7 @@ use QWizard::Storage::Base;
 
 our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '2.2.2';
+our $VERSION = '2.2.3';
 
 our %default_opts =
   (
