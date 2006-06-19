@@ -1,6 +1,6 @@
 package QWizard::Plugins::Bookmarks;
 
-our $VERSION = '2.2.3';
+our $VERSION = '3.0';
 require Exporter;
 
 use strict;
@@ -14,37 +14,29 @@ our @EXPORT_OK = qw(init_bookmarks);
 our $marks;
 
 our $memory_mark = '__memory_mark';
-
-our @questions =
-  (
-   { type => 'menu', name => 'qwbookmarks',
-     values => \&get_bookmark_list,
-     submit => 1,
-     default => 'Bookmarks', override => 1},
-  );
-
-our %bookmark_primaries =
-  (
-   get_bookmark_name =>
-   { title => 'Define a Bookmark',
-     questions =>
-     [qw_text('bookmark_name', "Bookmark Name:", 
-	      check_value => \&QWizard::qw_required_field)],
-   }
-  );
+our $memory_mark_modified = '__memory_mark_modified';
 
 sub get_bookmark_list {
-    my @list = ('Bookmarks', 'Add page as a bookmark');
+    my $qw = shift;
+    my @list = ($qw->{'__bookmarks_params'}{'title'},
+		$qw->{'__bookmarks_params'}{'saveopt'});
     my $all = $marks->get_all();
-    push @list, (grep { $_ ne $memory_mark } keys(%$all));
+    push @list, (grep { $_ !~ /^__/ } keys(%$all));
     return \@list;
 }
 
+
+#
+# this function is called at the top of a page and if the user had hit
+# the 'save' equivelent menu item then it jumps to the primary to
+# request a name.
+#
 sub bookmarks_start_page_begin {
     my ($qw) = @_;
     return if ($qw->qwpref('qw_nobookmarks'));
-    if ($qw->qwparam('qwbookmarks') ne 'Bookmarks') {
-	if ($qw->qwparam('qwbookmarks') eq 'Add page as a bookmark') {
+    if ($qw->qwparam('qwbookmarks') ne $qw->{'__bookmarks_params'}{'title'}) {
+	if ($qw->qwparam('qwbookmarks') eq 
+	    $qw->{'__bookmarks_params'}{'saveopt'}) {
 	    if (!$qw->qwparam('bookmark_name')) {
 		$qw->add_todos('get_bookmark_name');
 	    }
@@ -52,6 +44,18 @@ sub bookmarks_start_page_begin {
     }
 }
 
+#
+# this function is called right at the beginning of the keep_working
+# qwizard loop.
+#
+#  1) if we got here after entering a save name save the data under
+#     the bookmark_name parameter setting and then restore the screen
+#     to just before they hit the 'save' button.
+#
+#  2) If they hit the menu to load a bookmark, load that data
+#
+#  3) else (!2) save the current spot into the special $memory_mark slot.
+#
 sub bookmarks_keep_working_begin {
     my ($qw) = @_;
 
@@ -61,18 +65,23 @@ sub bookmarks_keep_working_begin {
 	# memorize the page the user was looking at
 	#   Note: which is different than where we are now
 	#
-	my $str = $marks->get($memory_mark);
+	my $usemodified = $qw->qwparam('qwbm_use_modified');
+	my $str = $marks->get($usemodified ?
+			      $memory_mark_modified : $memory_mark);
 	$marks->set($qw->qwparam('bookmark_name'), $str);
+
 	# after saving it, reset to that point to continue on
-	$qw->{'generator'}{'datastore'}->from_string($str);
+	bookmarks_jump_to_string($qw, $str);
     }
-    if ($qw->qwparam('qwbookmarks') ne 'Bookmarks') {
-	if ($qw->qwparam('qwbookmarks') ne 'Add page as a bookmark') {
-	    #
-	    # Jump to the requested book mark
-	    #
+    if ($qw->qwparam('qwbookmarks') ne $qw->{'__bookmarks_params'}{'title'}) {
+	if ($qw->qwparam('qwbookmarks') ne 
+	    $qw->{'__bookmarks_params'}{'saveopt'}) {
+
+	    # Get the requested book mark data
 	    my $str = $marks->get($qw->qwparam('qwbookmarks'));
-	    $qw->{'generator'}{'datastore'}->from_string($str);
+
+	    # Jump to it
+	    bookmarks_jump_to_string($qw, $str);
 	}
     } else {
 	# save the current QWizard history spot for use later if they
@@ -82,12 +91,74 @@ sub bookmarks_keep_working_begin {
     }
 }
 
+sub bookmarks_jump_to_string {
+    my ($qw, $str) = @_;
+
+    my $store = $qw->{'generator'}{'datastore'};
+
+    $store->from_string($str);
+
+    if ($store->get('qwbookmarks') ne $qw->{'__bookmarks_params'}{'title'}) {
+	# we need to refresh the current screen instead of
+	# 'submitting' to the next one.
+	$store->set('redo_screen',1);
+
+	# We need to change the value of the bookmark menu back to
+	# its default so we don't trigger any other code.
+	$store->set('qwbookmarks',
+		    $qw->{'__bookmarks_params'}{'title'});
+    }
+}
+
+
+#
+# call for end_sections_hook
+#
+sub bookmarks_end_section_hook {
+    my ($qw, $p) = @_;
+    $p = $p->[0];
+    return if ($p->{'title'} eq 'Remember This Spot');
+    my $str = $qw->{'generator'}{'datastore'}->to_string();
+    $marks->set($memory_mark_modified, $str);
+}
+
 sub init_bookmarks {
-    my ($qw, $storage) = @_;
+    my ($qw, $storage, %params) = @_;
+
+    our @questions =
+      (
+       { type => 'menu', name => 'qwbookmarks',
+	 values => \&get_bookmark_list,
+	 submit => 1,
+	 default => $params{'title'} || 'Bookmarks', override => 1},
+      );
+
+    our %bookmark_primaries =
+      (
+       get_bookmark_name =>
+       { title => 'Remember This Spot',
+	 questions =>
+	 [qw_text('bookmark_name', "Name to remember it by:", 
+		  check_value => \&QWizard::qw_required_field),
+	  qw_checkbox('qwbm_use_modified',
+		      "Use Page Settings Including Changes",
+		      1, 0,
+		      default => 1,
+		      helpdesc => '(otherwise save the page before modifications were made to it)')],
+       }
+      );
+
+
+    $qw->{'__bookmarks_params'} = \%params;
+    $qw->{'__bookmarks_params'}{'title'} = 'Bookmarks' 
+      unless (exists($qw->{'__bookmarks_params'}{'title'}));
+    $qw->{'__bookmarks_params'}{'saveopt'} = 'Remember This Page' 
+      unless (exists($qw->{'__bookmarks_params'}{'saveopt'}));
     $marks = $storage;
     push @{$qw->{'topbar'}},@questions;
     $qw->add_hook('start_page_begin', \&bookmarks_start_page_begin);
     $qw->add_hook('keep_working_begin', \&bookmarks_keep_working_begin);
+    $qw->add_hook('end_section', \&bookmarks_end_section_hook);
     $qw->merge_primaries(\%bookmark_primaries);
 }
 
@@ -106,7 +177,7 @@ answers.
 
   my $qw = new QWizard( ... );
   my $storage = new QWizard::Stoarge::File(file => "/path/to/file");
-  bookmarks_init($qw, $storage);
+  init_bookmarks($qw, $storage, OPTIONS);
 
 =head1 DESCRIPTION
 
@@ -118,6 +189,25 @@ well).
 
 The bookmarks will not be shown if the qw_nobookmarks preference is
 set to a true value.
+
+=head1 OPTIONS
+
+The options parameter of the init_bookmarks() function allows you to
+set I<name> => I<value> value pairs of options.  The following are
+currently supported:
+
+=over
+
+=item I<title> => I<"Bookmarks">
+
+The title parameter lets you override the default menu name from
+"Bookmarks" to a title of your choice.
+
+=item I<saveopt> => I<"Remember This Page">
+
+The option name that used used as the "save this spot" kind of value.
+
+=back
 
 =head1 AUTHOR
 

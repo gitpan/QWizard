@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '2.2.3';
+my $VERSION = '3.0';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -18,7 +18,14 @@ sub new {
     my $type = shift;
     my ($class) = ref($type) || $type;
     my $self = {'keep_working_hook' => \&QWizard::Generator::backup_params};
+
+    # collect arguments
+    for (my $i = 0; $i <= $#_; $i += 2) {
+	$self->{$_[$i]} = $_[$i+1];
+    }
     bless($self, $class);
+
+    # register our various handlers
     $self->add_handler('text',\&QWizard::Generator::Gtk2::do_entry,
 		       [['single','name'],
 			['default'],
@@ -42,7 +49,10 @@ sub new {
 			['default'],
 			['single','name'],
 			['single','submit'],
-			['single','refresh_on_change']]);
+			['single','refresh_on_change'],
+			['single','icons'],
+			['single','noiconpadding'],
+		       ]);
     $self->add_handler('paragraph',
 		       \&QWizard::Generator::Gtk2::do_paragraph,
 		       [['multi','values'],
@@ -84,7 +94,8 @@ sub new {
 		       \&QWizard::Generator::Gtk2::do_image,
 		       [['norecurse','imgdata'],
 			['norecurse','image'],
-			['single','imagealt']]);
+			['single','imagealt'],
+			['single','addscalebuttons']]);
     $self->add_handler('graph',
 		       \&QWizard::Generator::Gtk2::do_graph,
 		       [['norecurse','values'],
@@ -92,11 +103,13 @@ sub new {
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::Gtk2::do_multicheckbox,
 		       [['multi','default'],
-			['values,labels']]);
+			['values,labels'],
+			['single','refresh_on_change']]);
     $self->add_handler('button',
 		       \&QWizard::Generator::Gtk2::do_button,
 		       [['single','values'],
-			['default']]);
+			['default'],
+			['single','icon']]);
     $self->add_handler('fileupload',
 		       \&QWizard::Generator::Gtk2::do_fileupload,
 		       [['single','name'],
@@ -107,14 +120,13 @@ sub new {
 			['default'],
 			['single','data'],
 			['noexpand','datafn']]);
-    # XXX: file upload params
-    #[['default','values']]);
-    if (0) {
-    # XXX: we need to do a real text box
-
-
-    }
     $self->init_default_storage();
+
+    # force some default image search paths
+    print "$self->{'imgpaths'}\n";
+    $self->{'imgpaths'} = [$self->{'imgpaths'}]
+      if (ref($self->{'imgpaths'}) ne 'ARRAY');
+    push @{$self->{'imgpaths'}}, '/usr/share/icons/Bluecurve/16x16/stock/';
     return $self;
 }
 
@@ -124,12 +136,38 @@ sub our_exit {
 }
 
 sub create_qw_label {
-    my $label = Gtk2::Label->new(shift);
+    my ($self, $text, $indent, $icon, $activatewidget, $noimagespacing) = @_;
+    my $label = Gtk2::Label->new($text);
     $label->set_line_wrap(TRUE);
     $label->set_justify('GTK_JUSTIFY_LEFT');
-    $label->set_padding(10,4);
-    $label->set_alignment(0, .5);
-    return $label;
+    $label->set_padding(($indent ? 30 : 10), 4);
+    $label->set_alignment(0, 0);
+
+    # set with an accelerator if we have a widget to bind to
+    if ($activatewidget) {
+	$label->set_markup_with_mnemonic($text);
+	$label->set_mnemonic_widget($activatewidget);
+    }
+
+    $icon = $self->find_image_path($icon);
+
+    # no icon?  -> We're done
+    if (!$icon || ! -f $icon) {
+	my ($padx, $pady) = $label->get_padding();
+	$label->set_padding($padx + $noimagespacing, $pady);
+	return $label;
+    }
+
+    # if an icon is requested then create an icon to display to the
+    # left of the text
+    my $hbox = Gtk2::HBox->new(FALSE, 6);
+    my $image = Gtk2::Image->new_from_file($icon);
+    $hbox->pack_start(Gtk2::Image->new_from_file($icon), FALSE, FALSE, 0)
+      if ($icon);
+    $hbox->pack_start($label, FALSE, FALSE, 0);
+
+    return ($hbox, $label, $image) if (wantarray);
+    return $hbox;
 }
 
 sub goto_top {
@@ -174,7 +212,8 @@ sub remove_all_table_entries {
     # the first one.
     while ($#{$self->{'removals'}} > 0) {
 	my $obj = pop(@{$self->{'removals'}});
-	$self->{'vbox'}->remove($obj);
+	my $from = $obj->{'removefrom'} || $self->{'vbox'};
+	$from->remove($obj);
     }
     @{$self->{'tables'}} = ($self->{'tables'}[0]);
     @{$self->{'frames'}} = ($self->{'frames'}[0]);
@@ -230,7 +269,8 @@ sub our_mainloop {
 }
 
 sub add_qframe {
-    my ($self, $title) = @_;
+    my ($self, $title, $where) = @_;
+    $where ||= $self->{'vbox'};
     $self->{'qtable'} = Gtk2::Table->new(3, $self->{'qtable_height'}, FALSE);
     push @{$self->{'tables'}}, $self->{'qtable'};
     if (defined($title)) {
@@ -238,92 +278,174 @@ sub add_qframe {
 	$self->{'qframe'}->set_border_width(5);
 	$self->{'qtable_height'} = 10;
 	$self->{'qframe'}->add($self->{'qtable'});
-	$self->{'vbox'}->pack_start($self->{'qframe'}, FALSE, FALSE, 0);
+	$self->{'qframe'}{'removefrom'} = $where;
+	$where->pack_start($self->{'qframe'}, FALSE, FALSE, 0);
 	push @{$self->{'frames'}}, $self->{'qframe'};
 	push @{$self->{'removals'}}, $self->{'qframe'};
     } else {
-	$self->{'vbox'}->pack_start($self->{'qtable'}, FALSE, FALSE, 0);
+	$where->pack_start($self->{'qtable'}, FALSE, FALSE, 0);
+	$self->{'qtable'}{'removefrom'} = $where;
 	push @{$self->{'removals'}}, $self->{'qtable'};
     }
 }
 
+sub get_scrolled_vbox {
+    my ($self) = shift;
+
+    my $sw = Gtk2::ScrolledWindow->new();
+    $sw->set_policy('automatic','automatic');
+
+    my $vb = Gtk2::VBox->new(FALSE, 6);
+    $sw->add_with_viewport($vb);
+
+    return ($vb, $sw);
+}
 
 sub init_screen {
     my ($self, $wiz, $title) = @_;
     if (!$self->{'window'}) {
+	
+	# create the window object itself
 	$self->{'window'} = Gtk2::Window->new('toplevel');
 	$self->{'window'}->set_title($title);
 	$self->{'window'}->set_border_width(5);
-	$self->{'window'}->set_default_size(600,650);
+	$self->{'window'}->set_default_size(900,650);
 	$self->{'window'}->signal_connect(delete_event => \&our_exit);
 	$self->{'window'}->signal_connect(destroy => \&our_exit);
 	
-	
+	## parentvbox: the master vbox
+	# contains the topbar, the main widgets (mainhbox), and the buttons
 	$self->{'parentvbox'} = Gtk2::VBox->new(FALSE, 6);
 	$self->{'window'}->add($self->{'parentvbox'});
 
-	# the top bar: XXX should be outside the frame
+	## the top bar
+	# is a table
 	$self->{'topbar'} = Gtk2::Table->new(4,4,FALSE);
 	$self->{'parentvbox'}->pack_start($self->{'topbar'}, FALSE, FALSE, 0);
 
+	# mainhbox: The main widget section, after the title
+	$self->{'mainhbox'} = Gtk2::HBox->new(FALSE,3);
+	$self->{'parentvbox'}->pack_start($self->{'mainhbox'}, TRUE, TRUE, 0);
+	
+	## packing the left/center/right frames
+	# children of the mainhbox
+	#
+	# the left frame of the hbox
+	$self->{'outerpane'} = Gtk2::HPaned->new();
+	$self->{'mainhbox'}->pack_start($self->{'outerpane'},
+					TRUE, TRUE, 0);
+	$self->{'mainleftpane'} = Gtk2::HPaned->new();
+	$self->{'outerpane'}->pack1($self->{'mainleftpane'}, TRUE, TRUE);
+
+	($self->{'leftvbox'}, 
+	 $self->{'leftscrolledwindow'}) = $self->get_scrolled_vbox();
+	
+	  #Gtk2::VBox->new(FALSE,3);
+	$self->{'mainleftpane'}->pack1($self->{'leftscrolledwindow'},
+				       FALSE, TRUE);
+	$self->{'lefttable'} = Gtk2::Table->new(4,4,FALSE);
+	$self->{'leftvbox'}->pack_start($self->{'lefttable'}, FALSE, FALSE, 0);
+
+	# the center frame box
+	$self->{'centervbox'} = Gtk2::VBox->new(FALSE,3);
+	$self->{'mainleftpane'}->pack2($self->{'centervbox'}, TRUE, TRUE);
+
+	# the right frame of the hbox
+	($self->{'rightvbox'},
+	 $self->{'rightscrolledwindow'}) = $self->get_scrolled_vbox();
+	
+	$self->{'outerpane'}->pack2($self->{'rightscrolledwindow'},
+				    FALSE, TRUE);
+	$self->{'righttable'} = Gtk2::Table->new(4,4,FALSE);
+	$self->{'rightvbox'}->pack_start($self->{'righttable'},
+					 FALSE, FALSE, 0);
+
+	## packing the center widget box
+
 	# the title name
 	$self->{'gtk2title'} = Gtk2::Label->new($title);
-	$self->{'parentvbox'}->pack_start($self->{'gtk2title'},
+	$self->{'centervbox'}->pack_start($self->{'gtk2title'},
 					  FALSE, FALSE, 0);
 
-	$self->{'scrolledwindow'} = Gtk2::ScrolledWindow->new();
-	$self->{'parentvbox'}->pack_start($self->{'scrolledwindow'},
+	# the scrolled window that makes up the questions
+	($self->{'vbox'}, $self->{'mainscrolledwindow'}) =
+	  $self->get_scrolled_vbox('main', $self->{'centervbox'});
+
+	$self->{'centervbox'}->pack_start($self->{'mainscrolledwindow'},
 					  TRUE, TRUE, 0);
-	$self->{'vbox'} = Gtk2::VBox->new(FALSE, 6);
-	$self->{'scrolledwindow'}->add_with_viewport($self->{'vbox'});
+
 	$self->{'introframe'} = Gtk2::Frame->new();
-	$self->{'gtk2intro'} = create_qw_label('');
+	$self->{'gtk2intro'} = $self->create_qw_label('');
+	$self->{'gtk2intro'}->set_max_width_chars(80);
+	$self->{'gtk2intro'}->set_line_wrap(TRUE);
+	# the introduction
 	$self->{'introframe'}->add($self->{'gtk2intro'});
 	$self->{'vbox'}->pack_start($self->{'introframe'}, FALSE, FALSE, 0);
 
+	# bottom row buts done in do_ok_cancel
+	# get added as children of the parentvbox to be full width on bottom
+
 	$self->add_qframe('Questions');
     }
+    $self->initialize_auto_accelerator();
 }
 
 sub do_ok_cancel {
   my ($self, $nexttext, $wiz, $p) = @_;
   if (!$self->{'bot'}) {
+      my $hb;
       $self->{'bot'} = Gtk2::HBox->new (FALSE, 6);
       $self->{'bot'}->set_border_width(3);
       $self->{'parentvbox'}->pack_start($self->{'bot'}, FALSE, FALSE, 0);
 
       if (!$self->{'prevbut'}) {
-	  $self->{'prevbut'} = Gtk2::Button->new($wiz->{'back_text'} || 
-						 'Back');
+	  $self->{'prevbut'} = Gtk2::Button->new();
+	  ($hb, $self->{'prevbutlab'}, $self->{'prevbuticon'}) =
+	    $self->create_qw_label($wiz->{'back_text'} || '_Back',
+			    FALSE, 'gtk-go-back.png', $self->{'prevbut'});
+	  $self->{'prevbut'}->add($hb);
+
 	  $self->{'bot'}->pack_start($self->{'prevbut'}, FALSE, FALSE, 0);
 	  $self->{'prevbut'}->signal_connect(clicked => \&goto_prev);
 	  $self->{'prevbut'}->{'generator'} = $self;
       }
       if (!$self->{'nextbut'}) {
-	  $self->{'nextbut'} = Gtk2::Button->new($nexttext ||
-						 $wiz->{'next_text'} ||
-						 'Next');
+	  $self->{'nextbut'} = Gtk2::Button->new();
+	  ($hb, $self->{'nextbutlab'}, $self->{'nextbuticon'}) =
+	    $self->create_qw_label($nexttext || $wiz->{'next_text'} || '_Next',
+			    FALSE, 'gtk-go-forward.png', $self->{'nextbut'});
+	  $self->{'nextbut'}->add($hb);
 	  $self->{'bot'}->pack_start($self->{'nextbut'}, FALSE, FALSE, 0);
 	  $self->{'nextbut'}->signal_connect(clicked => \&goto_next);
 	  $self->{'nextbut'}->{'generator'} = $self;
       }
       if (!$self->{'refreshbut'}) {
-	  $self->{'refreshbut'} = Gtk2::Button->new('Refresh');
+	  $self->{'refreshbut'} = Gtk2::Button->new();
+	  ($hb, $self->{'refreshbutlab'}, $self->{'refreshbuticon'}) =
+	    $self->create_qw_label('_Refresh',
+			    FALSE, 'gtk-refresh.png', $self->{'refreshbut'});
+	  $self->{'refreshbut'}->add($hb);
+
+	  $self->{'refreshbut'} = Gtk2::Button->new('_Refresh');
 	  $self->{'bot'}->pack_start($self->{'refreshbut'}, FALSE, FALSE, 0);
 	  $self->{'refreshbut'}->signal_connect(clicked => \&goto_refresh);
 	  $self->{'refreshbut'}->{'generator'} = $self;
       }
-      if (!$self->{'canbut'}) {
-	  $self->{'canbut'} = 
-	    Gtk2::Button->new($wiz->qwparam('QWizard_Cancel') ||
-			      $wiz->{'cancel_text'} || 'Cancel');
+      if (!$self->{'canbut'} && !$self->{'no_cancel'}) {
+	  $self->{'canbut'} = Gtk2::Button->new();
+	  ($hb, $self->{'cancelbutlab'}, $self->{'cancelbuticon'}) =
+	    $self->create_qw_label($wiz->qwparam('QWizard_Cancel') ||
+			    $wiz->{'cancel_text'} || 'Cancel',
+			    FALSE, 'gtk-cancel.png', $self->{'cancelbut'});
+	  $self->{'canbut'}->add($hb);
+
 	  $self->{'bot'}->pack_end($self->{'canbut'}, FALSE, FALSE, 0);
 	  $self->{'canbut'}->signal_connect(clicked => \&goto_top);
 	  $self->{'canbut'}->{'generator'} = $self;
 	  $self->{'canbut'}->{'qwizard'} = $wiz;
       }
   } else {
-      $self->{'nextbut'}->set_label($nexttext || 'Ok');
+      $self->{'nextbutlab'}->set_markup_with_mnemonic($nexttext || 'Ok');
   }
 }
 
@@ -331,6 +453,11 @@ sub do_ok_cancel {
 # put stuff at a particular spot in the current table
 sub put_it {
     my ($self, $w, $row, $col) = @_;
+
+    # try and determine the correct spot to put something in the
+    # resulting widget table.  Callers could have passed a spot
+    # (rare), or we might be slowly building and incromenteing
+    # counters to get to the right spot.
     if (!$row) {
 	if (exists($self->{'currentrow'}) && defined($self->{'currentrow'})) {
 	    $row = $self->{'currentrow'};
@@ -346,19 +473,39 @@ sub put_it {
 	}
     }
 
-    # remove the temp assignments
-
+    # If the widget is a simple string, then we create a label out of it.
     if (ref($w) eq '') {
-	$w = create_qw_label($w);
+	$w = $self->create_qw_label($w);
 	$w->set_alignment(0, 0) if ($col == 1);
     }
 
-    # place the item in the table
-    $self->{'qtable'}->attach($w, $col, $col+1, $row, $row+1,
-			      ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
-			      ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
-			      ($col == 1 ? 5 : 0),
-			      0);
+    # Finally, place the widget in the table at the calculated spot
+    # column 1 is filled, and all others are fill and expanded both
+
+    if (ref($self->{'qtable'}) eq 'Gtk2::Table') {
+	# Parent widget is a table.
+	# Pack it in our calculated spot
+	$self->{'qtable'}->attach($w, $col, $col+1, $row, $row+1,
+				  ($col == 1 ? [qw(fill)] : [qw(fill)]),
+				  ($col == 1 ? [qw(fill)] : [qw(fill)]),
+#				  ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
+#				  ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
+				  ($col == 1 ? 5 : 0),
+				  0);
+    } elsif (ref($self->{'qtable'}) =~ /Gtk2::.Box/) {
+	# container is a box.  Packet it at the start.
+	# XXX: allow filling/expanding/etc.
+	$self->{'qtable'}->pack_start($w, FALSE, FALSE, 0);
+	print "box:    " . ref($self->{'qtable'}) . "\n";
+    } else {
+	# assume a generic single container.  Probably shouldn't be
+	# getting here.
+	$self->{'qtable'}->add($w);
+    }
+
+    # Remember the last widget.
+    # 1) used for tables that need to remember a list of sub-widgets
+    # 2) XXX: future key bindings
     $self->{'lastwidget'} = $w;
 
 #     # bind the tab and alt-tab key presses to forward and backward widgets
@@ -383,6 +530,7 @@ sub wait_for {
   my ($self, $wiz, $next, $p) = @_;
   $self->do_ok_cancel($next, $wiz, $p);
   $self->our_mainloop($wiz, $p);
+
   return 1;
 }
 
@@ -391,7 +539,7 @@ sub do_error {
     $self->{'currentq'}++;
     $self->{'qadd'}++;
     # XXX: make font red
-    my $lb = create_qw_label($err);
+    my $lb = $self->create_qw_label($err);
     $lb->set_markup("<span weight=\"bold\" foreground=\"red\">$err</span>");
     $self->put_it($lb, undef, 1);
 }
@@ -402,27 +550,102 @@ sub do_question {
     my $l;
     $self->{'currentq'} = $qcount + $self->{'qadd'};
 
-    if ($q->{'helpdesc'} && !$self->qwpref('usehelpballons')) {
+    #
+    # Get the actual help text, in case this is a subroutine.
+    #
+    my $helpdesc = $q->{'helpdesc'};
+    if (ref($helpdesc) eq "CODE") {
+	$helpdesc = $helpdesc->();
+    }
+
+    # add the question
+    my $hf = Gtk2::HBox->new();
+    $l = $self->create_qw_label($text, $q->{'indent'});
+    # pulled from something else...  use or not?
+    # $l->set_alignment(0, 0);
+    $self->{'lastquestion'} = $l;
+    $self->{'lasttext'} = $text;
+    $hf->pack_start($l, FALSE,FALSE,0);
+
+    # add a help bubble if needed
+    if ($q->{'helptext'}) {
+	# XXX Ideally make this button smaller.
+	my $but = Gtk2::Button->new('[?]');
+	$but->set_relief('none');
+	$but->signal_connect(clicked => \&do_helptext_button);
+	$but->{'helptext'} = $q->{'helptext'};
+	$but->{'generator'} = $self;
+	$hf->pack_start($but, FALSE, FALSE, 0);
+    }
+
+    if ($helpdesc) {
+#	if (!$self->qwpref('usehelpballons')) {
 	my $f = Gtk2::VBox->new();
 
-	#
-	# Get the actual help text, in case this is a subroutine.
-	#
-	my $helptext = $q->{'helpdesc'};
-	if (ref($helptext) eq "CODE") {
-	    $helptext = $helptext->();
-	}
-
-	$f->pack_start(create_qw_label($text), FALSE,FALSE,0);
-	$f->pack_start(create_qw_label($helptext), FALSE,FALSE,0);
+	$f->set_spacing(0);
+	$l->set_padding(($q->{'indent'} ? 30 : 10), 0);
+	$f->pack_start($hf, FALSE,FALSE,0);
+	my $helpl = $self->create_qw_label($helpdesc, $q->{'indent'});
+	$helpl->set_padding(($q->{'indent'} ? 40 : 20), 0);
+	$f->pack_start($helpl, FALSE, FALSE, 0);
 	$self->put_it($f, undef, 1);
+	#	} else {
+	#	    # XXX: help bubble?
+	#	    $self->put_it($hf, undef, 1);
+	#	}
     } else {
-	# XXX: help bubble?
-	$l = create_qw_label($text);
-	$l->set_alignment(0, 0);
-	$self->put_it($l, undef, 1);
+	$self->put_it($hf, undef, 1);
     }
 }
+
+sub do_helptext_button {
+    my $but = shift;
+    my $self = $but->{'generator'};
+
+    # get the text
+    my $helptext = $but->{'helptext'};
+    if (ref($helptext) eq "CODE") {
+	$helptext = $helptext->();
+    }
+
+    my $win;
+    $win = Gtk2::Window->new('toplevel');
+    $win->set_title("Help");
+    $win->set_border_width(5);
+    $win->set_default_size(300,200);
+
+    my $p = $self->create_qw_label($helptext);
+    $p->set_line_wrap(FALSE);
+    $win->add($p);
+    $win->show_all;
+}
+
+sub start_primaries {
+    my $self = shift;
+
+    # forget about past side counts
+    delete $self->{'sides'};
+}
+
+sub end_primaries {
+    my $self = shift;
+    if (!$self->{'sides'}{'righttable'}) {
+	$self->{'oldrightpos'} = $self->{'outerpane'}->get_position();
+	$self->{'outerpane'}->set_position(4000);
+    } else {
+	my ($w, $h) = $self->{'window'}->get_size();
+	$self->{'outerpane'}->set_position($self->{'oldrightpos'} || $w-200);
+    }
+
+    if (!$self->{'sides'}{'lefttable'}) {
+	$self->{'oldleftpos'} = $self->{'mainleftpane'}->get_position();
+	$self->{'mainleftpane'}->set_position(0);
+    } else {
+	$self->{'mainleftpane'}->set_position($self->{'oldleftpos'} || 200);
+    }
+}
+
+
 
 sub start_questions {
     my ($self, $wiz, $p, $title, $intro) = @_;
@@ -494,9 +717,79 @@ sub do_top_bar {
     $self->{'qtable'} = $oldtable;
 }
 
+sub do_side {
+    my ($self, $spot, $q, $wiz, $p, $widgets) = @_;
+
+    my $oldtable = $self->{'qtable'};
+    $self->{'qtable'} = $self->{$spot};
+
+    push @{$self->{'tables'}}, $self->{'qtable'};
+
+    my @tableinfo;
+    foreach my $w (@$widgets) {
+	next if (!$w);
+	if (ref($w) eq 'ARRAY') {
+
+	    # special side grouping
+	    # XXX: make border stand out.
+
+	    my $title = "";
+
+	    my $sidetable = $self->{'qtable'};
+	    $title = shift(@$w) if (ref($w->[0]) eq '');
+
+	    $self->add_qframe($title, $self->{'leftvbox'});
+
+	    if (0) {
+		# old OTHER way to create a box
+		my $vb = Gtk2::VBox->new(FALSE, 10);
+		my $sidetable = $self->{'qtable'};
+		$self->{'qtable'} = $vb;
+
+		# An encapsulated set maybe with a title
+		if (ref($w->[0]) eq '') {
+		    my $title = $self->create_qw_label("");
+		    $title->set_markup("<span size=\"large\" underline=\"single\">" . shift(@$w) . "</span>");
+		    $vb->pack_start($title, FALSE, FALSE, 0);
+		}
+	    }
+
+	    foreach my $widget (@$w) {
+		#print "widget: $widget\n";
+		$wiz->ask_question($p, $widget);
+	    }
+	    $self->{'qtable'} = $sidetable;
+
+	    ## OLD $self->{'leftvbox'}->pack_start($vb, FALSE, FALSE, 0);
+	} else {
+	    push @tableinfo, [$w];
+	}
+	$self->{'sides'}{$spot}++;
+    }
+
+    $self->do_a_table(\@tableinfo, $self->{'qtable'}, -1, $wiz, $q, $p);
+    $self->{'qtable'} = $oldtable;
+}
+
+sub do_left_side {
+    my $self = shift;
+    $self->do_side('lefttable', @_);
+}
+
+sub do_right_side {
+    my $self = shift;
+    $self->do_side('righttable', @_);
+}
+
 sub do_button {
-    my ($self, $q, $wiz, $p, $vals, $def) = @_;
-    my $but = Gtk2::Button->new($vals);
+    my ($self, $q, $wiz, $p, $vals, $def, $icon) = @_;
+    $vals = $self->add_accelerator($vals);
+
+    my $but = Gtk2::Button->new();
+    my $butlab = 
+      $self->create_qw_label($vals, FALSE, $icon, $but);
+    $but->add($butlab);
+
     $but->signal_connect(clicked => \&goto_next);
     $but->{'qbuttonname'} = $q->{'name'};
     $but->{'qbuttonval'} = $def || $q->{'default'}; # XXX: hack for refresh; doesn't deal with code refs properly though.  ugh.
@@ -517,6 +810,9 @@ sub do_filedownload {
     $but->{'parent_button'} = $but;
     $but->{'data'} = $data;
     $but->{'datafn'} = $datafn;
+    $but->{'q'} = $q;
+    $but->{'wiz'} = $wiz;
+    $but->{'p'} = $p;
     $self->put_it($but);
 }
 
@@ -587,6 +883,9 @@ sub create_filedownload_screen {
     $ok->{'qwname'} = $parent_button->{'qbuttonname'};
     $ok->{'data'} = $parent_button->{'data'};
     $ok->{'datafn'} = $parent_button->{'datafn'};
+    $ok->{'q'} = $parent_button->{'q'};
+    $ok->{'p'} = $parent_button->{'p'};
+    $ok->{'wiz'} = $parent_button->{'wiz'};
     $ok->{'parent_button'} = $parent_button;
     $ok->signal_connect('clicked' =>
 			   sub {
@@ -605,7 +904,10 @@ sub create_filedownload_screen {
 			       # call the datafn routine as well
 			       if ($but->{'datafn'} &&
 				   ref($but->{'datafn'}) eq 'CODE') {
-				   $but->{'datafn'}($fileh, $filename)
+				   $but->{'datafn'}($fileh, $filename,
+						    $but->{'wiz'},
+						    $but->{'p'},
+						    $but->{'q'});
 			       }
 
 			       # close the output file
@@ -643,6 +945,11 @@ sub do_checkbox {
 	$submit, $refresh_on_change) = @_;
     $vals = [1, 0] if ($#$vals == -1);
     my $cb = Gtk2::CheckButton->new();
+    my $text = $self->add_accelerator($self->{'lasttext'});
+    if ($text ne $self->{'lasttext'} || $self->{'lasttext'} =~ /_/) {
+	$self->{'lastquestion'}->set_markup_with_mnemonic($text);
+	$self->{'lastquestion'}->set_mnemonic_widget($cb);
+    }
     if ($def eq $vals->[0]) {
 	$cb->set_active(TRUE);
     }
@@ -692,36 +999,56 @@ sub toggle_all_boxes {
 }
 
 sub do_multicheckbox {
-    my ($self, $q, $wiz, $p, $defs, $vals, $labels) = @_;
+    my ($self, $q, $wiz, $p, $defs, $vals, $labels, $refresh_on_change) = @_;
     my $tf = Gtk2::VBox->new(FALSE, 3);
     my $count = -1;
     my @buts;
     foreach my $v (@$vals) {
 	$count++;
 	my $l = (($labels->{$v}) ? $labels->{$v} : "$v");
-	my $lb = create_qw_label($l);
+	my $lb = $self->create_qw_label($l);
 	my $c = Gtk2::CheckButton->new();
+	my $text = $self->add_accelerator($l);
+	if ($text ne $l || $l =~ /_/) {
+	    $lb->set_markup_with_mnemonic($text);
+	    $lb->set_mnemonic_widget($c);
+	}
 	my $hb = Gtk2::HBox->new(FALSE, 0);
 
 	$hb->pack_start($c, FALSE, FALSE, 0);
 	$hb->pack_start($lb, FALSE, FALSE, 0);
 	$tf->pack_start($hb, FALSE, FALSE, 0);
 	
-	if ($defs->[$count] eq $v) {
-	    $c->set_active(TRUE);
+	# special handling when a screen refrsh is in progress
+	# normally this is handled by QWizard itself with the default
+	# flag, but for multi-checkboxes we have more than one name.
+
+	if ($wiz->qwparam('redoing_now')) {
+	    $c->set_active(TRUE) if ($wiz->qwparam($q->{'name'} . $v) eq $v);
+	}  else {
+	    # set the value now
+	    $self->{'datastore'}->set($q->{'name'} . $v, $defs->[$count]);
+
+	    # test to see if the current default value matches and
+	    # then turn the checkbox to on.
+	    if ($defs->[$count] eq $v) {
+		$c->set_active(TRUE);
+	    }
 	}
 	$c->{'qwvals'} = [$v,undef];
 	$c->{'generator'} = $self;
 	$c->{'qwname'} = $q->{'name'} . $v;
 	$c->{'qwend'} = \&check_callback;
+	if ($refresh_on_change) {
+	    $c->signal_connect(clicked => \&goto_refresh);
+	}
 	push @buts, $c;
 	
 	push @{$wiz->{'passvars'}},$q->{'name'} . $v;
 	push @{$tf->{'qwsubwidgets'}}, $c;
-	$self->{'datastore'}->set($v, $defs->[$count]);
     }
 
-    if ($q->{'notoggles'}) {
+    if (!$q->{'notoggles'}) {
 	my $hb = Gtk2::HBox->new(FALSE, 0);
 
 	my $but = Gtk2::Button->new('Set All');
@@ -747,13 +1074,17 @@ sub do_multicheckbox {
 
 sub do_radio {
     my ($self, $q, $wiz, $p, $vals, $labels, $def, $name,
-	$submit, $refresh_on_change) = @_;
-
+	$submit, $refresh_on_change, $icons, $noiconpadding) = @_;
     my $vb = Gtk2::VBox->new();
     my (@ws);
+
     foreach my $v (@$vals) {
 	my $text = (($labels->{$v}) ? $labels->{$v} : "$v");
-	my $rb = Gtk2::RadioButton->new($self->{'radiogroups'}{$name}, $text);
+	$text = $self->add_accelerator($text);
+	my $rb = Gtk2::RadioButton->new($self->{'radiogroups'}{$name});
+	my $label = $self->create_qw_label($text, FALSE, $icons->{$v}, $rb, 
+				    $noiconpadding);
+	$rb->add($label);
 	if ($v eq $def) {
 	    $rb->set_active(TRUE);
 	}
@@ -797,7 +1128,7 @@ sub do_paragraph {
     my $w = $width || 40;
     foreach my $i (@$vals) {
 	my $t;
-	$t = create_qw_label($i);
+	$t = $self->create_qw_label($i);
 	if ($preformatted) {
 	    $t->set_line_wrap(FALSE)
 	} else {
@@ -902,7 +1233,7 @@ sub do_textbox {
     my $tb = Gtk2::TextBuffer->new();
     $tb->set_text($def);
     my $tv = Gtk2::TextView->new_with_buffer($tb);
-    $tv->set_size_request(-1,150);
+    $tv->set_size_request(300,150);
     $tv->{'qwend'} = sub { 
 	my @bounds = $_[0]->get_buffer()->get_bounds();
 	$_[0]->{'generator'}->qwparam($_[0]->{'qwname'},
@@ -929,10 +1260,10 @@ sub do_separator {
 ##################################################
 
 sub do_a_table_widget {
-    my ($self, $wiz, $p, $table, $column, $colnum, $rowc) = @_;
+    my ($self, $wiz, $p, $containedin, $column, $colnum, $rowc) = @_;
 
     my $oldqt = $self->{'qtable'};
-    $self->{'qtable'} = $table;
+    $self->{'qtable'} = $containedin;
 
     my $oldq = $self->{'currentq'};
 
@@ -944,7 +1275,7 @@ sub do_a_table_widget {
 		
     my $subname = $wiz->ask_question($p, $column);
     push @{$wiz->{'passvars'}}, $subname if ($subname);
-    push @{$table->{'qwsubwidgets'}}, $self->{'lastwidget'};
+    push @{$containedin->{'qwsubwidgets'}}, $self->{'lastwidget'};
 
     $self->{'qtable'} = $oldqt;
     $self->{'currentq'} = $oldq;
@@ -968,7 +1299,12 @@ sub do_a_table {
 	my $col = 0;
 	$rowc++;
 	foreach my $column (@$row) {
-	    if (ref($column) eq "ARRAY") {
+	    if (ref($column) =~ /Gtk2/) {
+		# a native Gtk2 widget.  Just add it.
+		$parentt->attach_defaults($column, $col, $col + 1,
+					  $rowc, $rowc+1);
+		$col++;
+	    } elsif (ref($column) eq "ARRAY") {
 		# sub table
 		my $newt = Gtk2::Table->new(4,4,FALSE);
 		$self->do_a_table($column, $newt, -1, $wiz, $q, $p);
@@ -979,7 +1315,7 @@ sub do_a_table {
 		$self->do_a_table_widget($wiz, $p, $parentt, $column,
 					 $col++, $rowc);
 	    } else {
-		$parentt->attach_defaults(create_qw_label($column),
+		$parentt->attach_defaults($self->create_qw_label($column),
 					  $col, $col + 1, $rowc, $rowc+1);
 		$col++;
 	    }
@@ -999,7 +1335,7 @@ sub do_table {
 	my $col = 0;
 	foreach my $column (@$headers) {
 	    # XXX: mark up bold?
-	    $tab->attach_defaults(create_qw_label($column),
+	    $tab->attach_defaults($self->create_qw_label($column),
 				  $col, $col+1, 0, 1);
 	    $col++;
 	}
@@ -1061,41 +1397,44 @@ sub create_scale_but {
 
 sub do_image {
 	my $self = shift;
-	my ($q, $wiz, $p, $datastr, $filestr, $imgalt) = @_;
+	my ($q, $wiz, $p, $datastr, $filestr, $imgalt, $scaleopts) = @_;
 
 	my $img;
-	if (1) {
-	    if ($datastr) {
-		# XXX: data hand handled yet.
-		$filestr = $self->create_temp_file('.png',$datastr);
-	    } else {
-		$filestr = $wiz->{'generator'}{'imagebase'} . $filestr;
-	    }
-	    # image file
-	    $img = Gtk2::Image->new_from_file($filestr);
+	if ($datastr) {
+	    $filestr = $self->create_temp_file('.png',$datastr);
+	} else {
+	    $filestr = $self->find_image_path($filestr);
 	}
+	# image file
+	$img = Gtk2::Image->new_from_file($filestr);
+
 	if ($img) {
 	    my $vb = Gtk2::VBox->new();
-	    my $hb = Gtk2::HBox->new();
+	    my $but;
 
-	    create_scale_but($hb, "25% >", .25, $img);
-	    create_scale_but($hb, "10% >", .1, $img);
+	    if ($scaleopts) {
+		my $hb = Gtk2::HBox->new();
+		
+		create_scale_but($hb, "25% >", .25, $img);
+		create_scale_but($hb, "10% >", .1, $img);
+		
+		my $but = Gtk2::Button->new("Original Size");
+		$but->signal_connect(clicked => \&orig_size);
+		$hb->pack_end($but, FALSE, FALSE, 0);
 
-	    my $but = Gtk2::Button->new("Original Size");
-	    $but->signal_connect(clicked => \&orig_size);
-	    $hb->pack_end($but, FALSE, FALSE, 0);
+		create_scale_but($hb, "< 10%", -.1, $img);
+		create_scale_but($hb, "< 25%", -.25, $img);
 
-	    create_scale_but($hb, "< 10%", -.1, $img);
-	    create_scale_but($hb, "< 25%", -.25, $img);
+		$vb->pack_end($hb, FALSE, FALSE, 0);
+	    }
 
-	    $vb->pack_end($hb, FALSE, FALSE, 0);
 	    $vb->pack_end($img, FALSE, FALSE, 0);
 
 	    $img->{'currentsize'} = 1;
 	    my ($arg1, $arg2) = $img->get_pixbuf();
 
 	    $img->{'origpixbuf'} = $arg1;
-	    $but->{'img'} = $img;
+	    $but->{'img'} = $img if ($but);
 
 	    $self->put_it($vb);
 	} else {
@@ -1108,22 +1447,28 @@ sub do_image {
 ##################################################
 
 sub do_tree {
-    my ($self, $q, $wiz, $p, $labels) = @_;
+    my ($self, $q, $wiz, $p, $labels, $expand_all, $def) = @_;
 
     my $tv = new Gtk2::TreeView();
     my $mod = new Gtk2::TreeStore('Glib::String');
     $tv->set_model($mod);
 
     my @expand;
-    if ($q->{'default'}) {
+    if ($def) {
 	#ensure that the default is initially visible
-	my $cur = $q->{'default'};
+	my $cur = $def;
 	unshift @expand, $cur;
 	until ($cur eq $q->{'root'}) {
 	    $cur = get_name($q->{'parent'}->($wiz, $cur));
+	    if (!$cur) {
+		# uh oh; can't find path to the default.
+		print STDERR "QWizard/Gtk2: can't find path to root=$q->{root} for default tree node for: $q->{name}\n";
+		@expand = ();
+		last;
+	    }
 	    unshift @expand, $cur;
 	}
-	$self->{'datastore'}->set($q->{'name'},$q->{'default'}) if $q->{'name'};
+	$self->{'datastore'}->set($q->{'name'}, $def) if $q->{'name'};
     }
 
     #
@@ -1132,6 +1477,11 @@ sub do_tree {
     $mod->{'qwdata'}{'qw'} = $wiz;
     $mod->{'qwdata'}{'q'} = $q;
     $mod->{'qwdata'}{'labels'} = $labels;
+    $mod->{'qwdata'}{'first'} = 1;
+    $mod->{'qwdata'}{'expand_all'} = $expand_all;
+    $mod->{'qwdata'}{'refresh_on_change'} =
+      $q->{'refresh_on_change'};
+    $mod->{'qwdata'}{'generator'} = $wiz->{'generator'};
     $mod->{'qwdata'}{'datamap'}{'0'} = $q->{'root'};
 
     #
@@ -1186,6 +1536,12 @@ sub do_tree {
 			    my $pname = $path->to_string();
 			    my $val = $mod->{'qwdata'}{'datamap'}{$pname};
 			    $mod->{'qwdata'}{'qw'}->qwparam($qname, $val);
+			    if ($mod->{'qwdata'}{'first'}) {
+				delete($mod->{'qwdata'}{'first'});
+			    } else {
+				goto_refresh($mod->{'qwdata'})
+				  if ($mod->{'qwdata'}{'refresh_on_change'});
+			    }
 			});
 
 
@@ -1203,7 +1559,11 @@ sub do_tree {
     #
     # Do initial expasion to find the default
     #
-    if ($#expand > -1) {
+    if ($expand_all ne '0' && $expand_all ne '') {
+	for (my $i = 0; $i <= (int($expand_all) || 10); $i++) {
+	    $tv->expand_all();
+	}
+    } elsif ($#expand > -1) {
 	shift @expand;  # drop the root node
 	$tv->{'expand'} = \@expand;
  	$tv->expand_row(new Gtk2::TreePath("0"), FALSE);
@@ -1257,7 +1617,8 @@ sub add_children {
     $model->remove($model->iter_nth_child($piter, 0));
 
     # expading further if needed
-    $tv->expand_row(new Gtk2::TreePath($tv->{'qwdata'}{'expand_row'}), FALSE);
+    $tv->expand_row(new Gtk2::TreePath($tv->{'qwdata'}{'expand_row'}), FALSE)
+      if (exists($tv->{'qwdata'}{'expand_row'}));
 
 }
 
@@ -1293,6 +1654,7 @@ sub add_node {
 	if ($#{$tv->{'expand'}} == -1) {
 	    # this is the last node, selecte it
 	    $tv->{'qwdata'}{'cursor'} = $path;
+	    delete($tv->{'qwdata'}{'expand_row'});
 	} else {
 	    # tell the sub row to expand
 	    $tv->{'qwdata'}{'expand_row'} = $path;
@@ -1332,7 +1694,7 @@ sub start_confirm {
     $self->remove_all_table_entries();
     $self->put_it('Wrapping up.',1,1);
     $self->put_it('Do you want to commit the following changes:',2,1);
-    $self->{'resultf'} = create_qw_label('');
+    $self->{'resultf'} = $self->create_qw_label('');
     $self->put_it($self->{'resultf'},3,1);
 }
 
@@ -1363,7 +1725,7 @@ sub start_actions {
     my ($self, $wiz) = @_;
     $self->remove_all_table_entries();
     $self->put_it('Processing your request...',1,1);
-    $self->{'resultf'} = create_qw_label('');
+    $self->{'resultf'} = $self->create_qw_label('');
     $self->put_it($self->{'resultf'},2,1);
 }
 

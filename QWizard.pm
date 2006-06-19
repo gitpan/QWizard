@@ -1,10 +1,11 @@
 package QWizard;
 
-our $VERSION = '2.2.3';
+our $VERSION = '3.0';
 require Exporter;
 
 our @ISA = qw(Exporter);
-our @EXPORT = qw(qwdebug qwisdebugon qwparam qwpref qw_upload_fh qw_upload_file
+our @EXPORT = qw(qwdebug qwisdebugon qwparam qwparams qwpref
+		 qw_upload_fh qw_upload_file
 		 qw_required_field qw_integer qw_optional_integer
 		 qw_check_int_ranges qw_check_length_ranges
                  qw_hex qw_optional_hex qw_check_hex_and_length);
@@ -21,6 +22,10 @@ our %states = ( ASKING => 1,
 		FINISHED => 4,
 		CANCELED => 5,
 	      );
+
+our $PRIM_NOTDONE  = 0;
+our $PRIM_DONE     = 1;
+our $PRIM_ANSWERED = 2;
 
 use strict;
 
@@ -48,6 +53,9 @@ sub new {
     my $npprefs = $self->{'npprefs'};
     $npprefs =~ s/&np-prefs=//;
     parseprefs($self,$npprefs);
+
+    # remember ourselves for later usage
+    $qwcurrent = $self;
 
     return $self;
 }
@@ -222,7 +230,7 @@ sub magic {
       qwdebug("incoming stack: " . $self->qwparam('qwizard_tree'));
       if ($self->qwparam('disp_help_p')) {
 	  $self->display_help();
-      } elsif ($self->qwparam('pass_vars')) {
+      } elsif (!$self->qwparam('qw_cancel') && $self->qwparam('pass_vars')) {
 	  qwdebug("called with an existing todo list, continuing to work.");
 	  $self->keep_working(@_);
 	  qwdebug("done calling existing");
@@ -240,7 +248,7 @@ sub do_named_primaries {
     my $self = shift;
     my $top = {};
     $top->{'name'} = 'topcontainer';
-    $top->{'done'} = 1;
+    $top->{'done'} = $PRIM_DONE;
     foreach my $i (@_) {
 	push @{$top->{'children'}}, { name => $i, parent => $top };
     }
@@ -318,7 +326,7 @@ sub keep_working {
   $self->foreach_primary($self->{'active'},
 			 sub {
 			     my $num = $_[1];
-			     if ($_[0]{'done'} == 2) {
+			     if ($_[0]{'done'} == $PRIM_ANSWERED) {
 				 $$num++;
 				 qwdebug("munging form data for primary $_[0]->{name}");
 				 $_[2]->munge_form_data($_[2]->get_primary($_[0]{'name'}));
@@ -337,7 +345,7 @@ sub keep_working {
 	  qwdebug("Running post answers clauses");
 	  $self->foreach_primary($self->{'active'},
 		sub {
-		    if ($_[0]{'done'} == 2) {
+		    if ($_[0]{'done'} == $PRIM_ANSWERED) {
 			my ($pdesc, $self, $redisplay) = @_;
 			my $redo;
 		        my $p = $self->get_primary($pdesc->{'name'});
@@ -368,7 +376,7 @@ sub keep_working {
 			    delete $p->{'remap'};
 			}
 			# mark as finished
-		        $_[0]{'done'} = 1 unless $redo;
+		        $_[0]{'done'} = $PRIM_DONE unless $redo;
 			$$redisplay += $redo;
 		    }}, $self, \$redisplay);
 	  $self->run_hooks('post_answers_end');
@@ -381,7 +389,8 @@ sub keep_working {
       # mark as undone again
       $self->foreach_primary($self->{'active'},
 			     sub {
-				 $_[0]{'done'} = 0 if ($_[0]{'done'} == 2);
+				 $_[0]{'done'} = $PRIM_NOTDONE 
+				   if ($_[0]{'done'} == $PRIM_ANSWERED);
 			     });
       # remember the current value for anything that needs to process it.
       $self->qwparam('redoing_now', $self->qwparam('redo_screen') || 1);
@@ -437,6 +446,9 @@ sub munge_form_data {
     my ($self, $p) = @_;
     foreach my $q (@{$p->{'questions'}}) {
 	if (ref($q) eq "HASH") {
+
+	    # XXX: These are somewhat HTML specific and should be
+	    # moved to the generator...
 	    if ($q->{'type'} eq "checkbox" &&
 		$q->{values} && $#{$q->{values}} > 0) {
 		if (!$self->qwparam($q->{'name'})) {
@@ -453,6 +465,11 @@ sub munge_form_data {
 				   $self->get_value($q->{'default'}, undef, [$p, $q]));
 		}
 	    }
+
+	    # each question can have it's own callback.
+	    if (exists($q->{'handle_results'})) {
+		$q->{'handle_results'}($self, $p, $q);
+	    }
 	}
     }
 }
@@ -466,7 +483,7 @@ sub check_answers {
 	$self->foreach_primary($self->{'active'},
 	    sub {
 		my $pdesc = $_[0];
-		return if ($pdesc->{'done'} != 2);
+		return if ($pdesc->{'done'} != $PRIM_ANSWERED);
 		my $p = $_[1]->get_primary($pdesc->{'name'});
 		my $ret = $_[2];
 		qwdebug("checking results in " . ($p->{'name'}||$p->{'title'}));
@@ -519,6 +536,19 @@ sub check_answers {
 	    $self, \$ret);
     }
     return $ret;
+}
+
+sub remove_todo {
+    my ($self, $todo) = @_;
+    $self->foreach_primary($self->{'active'},
+			   sub {
+			       if (!$todo ||
+				   $_[0]{'name'} == $todo) {
+				       qwdebug("removing $_[0]{name} from the list of things to do");
+				       $_[0]{'noactions'} = 1;
+				       $_[0]{'done'} = $PRIM_DONE;
+				   }
+			       }, $self);
 }
 
 sub add_todos {
@@ -626,6 +656,8 @@ sub do_primary_action_list {
     my ($self, $pdesc, $confirmonly) = @_;
     my $results;
 
+    return if ($pdesc->{'noactions'});
+
     my $p = $self->get_primary($pdesc->{'name'});
     return if (!$p);
 
@@ -638,6 +670,8 @@ sub do_primary_action_list {
 		    $desc = $desc->($self);
 		}
 		if ($desc && $desc ne 'OK') {
+		    # shouldn't be there but a common mistake.
+		    $desc =~ s/^msg:\s*//;
 		    $self->{'generator'}->do_confirm_message($self,
 							     $self->unparamstr($desc));
 		}
@@ -980,6 +1014,7 @@ sub ask_questions {
     my $repeat = 1;
     $self->{'passvars'} = \@passvars;  # ugly hack for multi-checkboxes
     my $newvars = {};
+    my $donefirstpass = 0;
 
     $self->{'allqcount'} = 0;
 
@@ -995,6 +1030,7 @@ sub ask_questions {
 			       }
 			   }, $self);
 
+    $self->{'generator'}->start_primaries();
     # process each primary we should be processing
     while (my $pdesc = $self->get_next_primary()) {
 	my $p = $self->get_primary($pdesc->{'name'});
@@ -1003,15 +1039,15 @@ sub ask_questions {
 	if (ref($p) ne "HASH") {
 	    qwdebug("ERROR: primary $pdesc->{'name'} does not exist\n");
 	    # XXX: not portable error code
-	    print "QWizard Error.  called on primary $pdesc->{name} which doesn't exist";
-	    $pdesc->{'done'} = 2;
+	    print "QWizard Error.  Called on primary \"$pdesc->{name}\", which doesn't exist\n";
+	    $pdesc->{'done'} = $PRIM_ANSWERED;
 	    die if (!$self->{'skip_bad_primary_requests'});
 	    next;
 	}
 	
 	if (exists($p->{'doif'}) && ! $p->{'doif'}->(undef, $self, $p)) {
 	    qwdebug("Primary skipped by doif result");
-	    $pdesc->{'done'} = 2;
+	    $pdesc->{'done'} = $PRIM_ANSWERED;
 	    next;
 	}
 	# stash remap tag in prim to establish context 
@@ -1019,7 +1055,8 @@ sub ask_questions {
 	    $p->{'remap'} = $pdesc->{'remap'};
 	}
 	qwdebug("Processing Primary (more=$repeat): " . 
-		($p->{name} || $p->{title})); 
+		($p->{name} || $p->{title}) .
+		(($p->{'remap'}) ? " remap prefix: $p->{remap}" : "")); 
 	if ($p->{'take_over'}) {
 	    qwdebug("Passing control to primary, take_over hook found"); 
 	    $p->{'take_over'}($self, $p);
@@ -1043,8 +1080,9 @@ sub ask_questions {
 	    }
 	}
 	$count++;
-	if (($p->{'topbar'} || $self->{'topbar'}) && 
-	    UNIVERSAL::can($self->{'generator'}, 'do_top_bar')) {
+	
+	# the top most bar, if it exists
+	if (($p->{'topbar'} || $self->{'topbar'})) {
 	    my @barobjects;
 	    @barobjects = ($self->{'topbar'})
 	      if (ref($self->{'topbar'}) ne 'ARRAY');
@@ -1056,6 +1094,36 @@ sub ask_questions {
 	      if (ref($p->{'topbar'}) eq 'ARRAY');
 	    $self->{'generator'}->do_top_bar(undef, $self, $p, \@barobjects);
 	}
+
+	$self->{'generator'}->start_main_section($self, $p);
+	
+	if (!$donefirstpass) {
+	    $donefirstpass = 1;
+
+	    # left side frame if it exists
+	    if (($p->{'leftside'} || $self->{'leftside'})) {
+		my @sideobjects;
+		if (exists($self->{'leftside'})) {
+		    if (ref($self->{'leftside'}) eq 'ARRAY') {
+			@sideobjects = @{$self->{'leftside'}}
+		    } else {
+			@sideobjects = ($self->{'leftside'})
+		    }
+		}
+		if (exists($p->{'leftside'})) {
+		    if (ref($p->{'leftside'}) eq 'ARRAY') {
+			push @sideobjects, @{$p->{'leftside'}}
+		    } else {
+			push @sideobjects, ($p->{'leftside'})
+		    }
+		}
+		$self->{'generator'}->do_left_side(undef, $self, $p,
+						   \@sideobjects);
+	    }
+
+	    $self->{'generator'}->start_center_section($self, $p);
+	}
+
 	if ($p->{'questions'}) {
 	  $self->{'qcount'} = -1;
 	  qwdebug("starting queston processing/display");
@@ -1082,6 +1150,8 @@ sub ask_questions {
 	  $self->run_hooks('ask_questions_end');
         }
 
+	$self->{'generator'}->end_main_section($self, $p);
+
 	if ($p->{'sub_modules'}) {
 	  qwdebug("Adding submodules to todo list: $p->{sub_modules}"); 
 	  my $vals = $self->get_values($p->{'sub_modules'});
@@ -1102,7 +1172,7 @@ sub ask_questions {
 	    $newvars = $self->add_vars($newvars, @{$p->{'add_vars'}});
 	}
 	$repeat--;
-	$pdesc->{'done'} = 2;
+	$pdesc->{'done'} = $PRIM_ANSWERED;
 	# remove remap context from prim
 	delete $p->{'remap'} if exists $p->{'remap'};
 
@@ -1110,6 +1180,47 @@ sub ask_questions {
 	    qwdebug("Done processing screen's primaries ");
 	    if ($self->{'allqcount'}) {
 		qwdebug("Done with questions...  Getting user input\n");
+
+		# figure out the value of the next button so we can pass it down
+		my $next = (qwparam('no_actions') ne '' || 
+			    !$self->has_actions_or_post_answers()) ? 
+			      '_Finished' : '_Next';
+		if (qwparam('no_actions') ne '' || 
+		    !$self->has_actions_or_post_answers()) {
+		    $self->{'last_screen'} = 1;
+		}
+		$next = qwparam('QWizard_next') if (qwparam('QWizard_next'));
+
+		# first close the middle section if needed
+		$self->{'generator'}->end_center_section($self, $p, $next);
+
+		# append the right side modules
+		# right side frame if it exists
+		if (exists($p->{'rightside'}) || exists($self->{'rightside'})) {
+		    my @sideobjects;
+
+		    # apply the wizards right side objects
+		    if (exists($self->{'rightside'})) {
+			if (ref($self->{'rightside'}) eq 'ARRAY') {
+			    @sideobjects = @{$self->{'rightside'}}
+			} else {
+			    @sideobjects = ($self->{'rightside'})
+			}
+		    }
+
+		    # apply the (XXX: last only) primaries objects
+		    if (exists($p->{'rightside'})) {
+			if (ref($p->{'rightside'}) eq 'ARRAY') {
+			    push @sideobjects, @{$p->{'rightside'}}
+			} else {
+			    push @sideobjects, ($p->{'rightside'})
+			}
+		    }
+		    $self->{'generator'}->do_right_side(undef, $self, $p,
+							\@sideobjects);
+		}
+
+		$self->{'generator'}->end_primaries();
 
 		# save current vars list.
 		$newvars = $self->add_and_pass_vars($newvars, @passvars);
@@ -1120,20 +1231,16 @@ sub ask_questions {
 		qwdebug("saving qwizard tree: $treestr");
 
 		# call the generator's wait_for routine to wrap up.
-		my $next = (qwparam('no_actions') ne '' || !$self->has_actions_or_post_answers()) ? 'Finished' : 'Next';
-		if (qwparam('no_actions') ne '' || !$self->has_actions_or_post_answers()) {
-		    $self->{'last_screen'} = 1;
-		}
-		$next = qwparam('QWizard_next') if (qwparam('QWizard_next'));
 		if ($self->{'generator'}->wait_for($self, $next, $p)) {
-		    if (ref($self->{'end_section_hook'}) eq "CODE") {
-			qwdebug("end_section_hook found.  Calling.\n");
-			$self->{'end_section_hook'}($self, $p);
+		    $self->run_hooks('end_section', $p);
+		    if ($self->qwparam('redo_screen')) {
+			delete $self->{'last_screen'}
+			  if (exists($self->{'last_screen'}));
 		    }
 		    $self->reset_qwizard() if ($self->{'last_screen'});
 		    return 0;
 		}
-		$self->reset_QWizard() if ($self->{'last_screen'});
+		$self->reset_qwizard() if ($self->{'last_screen'});
 	    } else {
 		# no questions generated by current screen, try one more.
 		$repeat++;
@@ -1168,7 +1275,9 @@ sub do_widget {
 	print $self->get_value($q->{values}, $def);
     } elsif ($q->{type} eq "tree") {
 	$self->{'generator'}->do_tree($q, $self, $p,
-				      $self->get_labels($q));
+				      $self->get_labels($q),
+				      $self->get_value($q->{'expand_all'}),
+				      $def);
     } else {
 	$typemap =
 	  $self->{'generator'}->get_handler('unknown',$q);
@@ -1301,6 +1410,7 @@ sub start_page {
 }
 
 sub print_stack_trace {
+return if(42 > 0);
     print STDERR "stack trace:\n";
     for (my $i = 1; $i <= 10; $i++) {
 	my @callinfo = caller($i);
@@ -1332,6 +1442,29 @@ sub qwparam {
     }
 
     return $generator->qwparam($it, @_);
+}
+
+sub qwparams {
+    my $self;
+    if (ref($_[0]) eq "QWizard") {
+	$self = shift;
+    } else {
+	$self = $qwcurrent;
+    }
+
+    my $generator = $self->{'generator'};
+
+    if (!$generator) {
+	print STDERR "QWizard::qwparams:  no generator\n";
+	print_stack_trace();
+	return("");
+    }
+
+    my @results;
+    foreach my $name (@_) {
+	push @results, $generator->qwparam($name);
+    }
+    return @results;
 }
 
 sub qw_upload_fh {
@@ -1369,7 +1502,7 @@ sub qw_upload_file {
     my $generator = $self->{'generator'};
 
     if (!$generator) {
-	print STDERR "QWizard::qw_upload_fh:  no generator\n";
+	print STDERR "QWizard::qw_upload_file:  no generator\n";
 	print_stack_trace();
 
 	return("");
@@ -1467,7 +1600,7 @@ sub get_next_primary {
     my ($self, $top) = @_;
     $top = $self->{'active'} if (!$top);
 
-    return $top if (!$top->{'done'});
+    return $top if ($top->{'done'} == $PRIM_NOTDONE);
     if ($top->{'children'}) {
 	foreach my $c (@{$top->{'children'}}) {
 	    my $it = $self->get_next_primary($c);
@@ -1483,7 +1616,8 @@ sub foreach_primary {
     my $sub = shift;
     my $c;
 
-    $sub->($top, @_);
+    my $response = $sub->($top, @_);
+    return if (defined($response) && $response eq 'STOP');
     if ($top->{'children'}) {
 	for ($c = 0; $c <= $#{$top->{'children'}}; $c++) {
 	    if ($c == $#{$top->{'children'}}) {
@@ -1961,6 +2095,14 @@ This example forces a Gtk2 generator to be used:
                          # ...
                         );
 
+=item generator_args => [ARGS],
+
+If you want the default generator that QWizard will provide you, but
+would still like to provide that generator with some arguments you can
+use this token to pass an array reference of arguments.  These
+arguments will be passed to the new() method of the Generator that is
+created.
+
 =item top_location => "webaddress"
 
 This should be the top location of a web page where the questions will be
@@ -2002,6 +2144,46 @@ A place to add extra widgets to a primary at the very top.
 
 See the I<bar> documentation in the I<QUESTION DEFINITIONS> section
 below for details on this field.
+
+=item leftside => [WIDGETS]
+
+=item rightside => [WIDGETS]
+
+Adds a left or right side frame to the main screen where the WIDGETS
+are always shown for all primaries.  Basically, these should be
+"axillary" widgets that augment the widgets is the main set of
+questions.  They can be used for just about anything, but the look and
+feel will likely be better if they're suplimental.
+
+The WIDGETS are normal question widgets, just as can appear in the
+questions section of the primaries definition as described below.
+
+In addition, however, there can be subgroupings with a title as well.
+These are then in a sub-array and are displayed with a title above
+them.  EG:
+
+  leftside => [ 
+               { type => 'button',
+                 # ...  normal button widget definition; see below
+               },
+               [
+                "Special Grouped-together Buttons",
+               	{ type => 'button',
+               	  # ...
+               	},
+               	{ type => 'button',
+               	  # ...
+               	},
+               ],
+              ],
+
+The above grouped set of buttons will appear slightly differently and
+grouped together under the title "Special Grouped-together Buttons".
+
+The widget-test-screen.pl in the examples directory shows examples of
+using this.
+
+Important note: Not all backends support this yet.  HTML and Gtk2 do, though.
 
 =back
 
@@ -2189,6 +2371,16 @@ A place to add extra widgets to a primary at the very top.
 See the I<bar> documentation in the I<QUESTION DEFINITIONS> section
 below for details on this field.
 
+=item leftside => [WIDGETS]
+
+=item rightside => [WIDGETS]
+
+Adds a left or right side frame to the main screen where the WIDGETS
+are shown for this primary.
+
+Important note: See the leftside/rightside documentation for QWizard
+for more details and support important notes there.
+
 =item take_over => \&subroutine
 
 This hash value lets a subroutine completely take control of processing
@@ -2222,9 +2414,6 @@ between the previous question and the next question.
 
 The fields available to question types are given below.  Unless otherwise
 stated, the fields are available to all question types.
-
-Also, see the I<QWizard_Widgets> manual page for more information
-about the Generators and the questions that each one supports.
 
 =over
 
@@ -2288,6 +2477,10 @@ A checkbox.  The I<values> clause should have only 2 values in it: one for
 its "on" value, and one for its "off" value (which defaults to 1 and 0,
 respectively).
 
+If a backend supports key accelerators (GTk2): Checkbox labels can be
+bound to Alt-key accelerators.  See QUESTION KEY-ACCELERATORS below
+for more information.
+
 =item multi_checkbox
 
 Multiple checkboxes, one for each label/value pair.  The I<name> question
@@ -2305,20 +2498,29 @@ For example, the following clauses:
 
 will give parameters of 'somethingend1' and 'somethingend2'.
 
+If a backend supports key accelerators (GTk2): Checkbox labels can be
+bound to Alt-key accelerators.  See QUESTION KEY-ACCELERATORS below
+for more information.
+
 =item radio
 
 Radio buttons, only one of which can be selected at a time.  If two questions
 have the same I<name> and are of type 'radio', they will be "linked" together
 such that clicking on a radio button for one question will affect the other.
 
+If a backend supports key accelerators (GTk2): Radio button labels can
+be bound to Alt-key accelerators.  See QUESTION KEY-ACCELERATORS below
+for more information.
+
 =item menu
 
 Pull-down menu, where each label is displayed as a menu item.  If just the
 I<values> clause (see below) is used, the labels on the screen will match the
-values.  If the I<labels> clause is used, the values shown to the user will
-be converted to the screen representations that will differ from the
-I<qwparam>() values available later.  This is useful for displaying human
-representations of programmatic values.  E.g.:
+values.  If the I<default> clause is set, then that menu entry will be the
+menu's initial selection.  If the I<labels> clause is used, the values shown
+to the user will be converted to the screen representations that will differ
+from the I<qwparam>() values available later.  This is useful for displaying
+human representations of programmatic values.  E.g.:
 
   {
       type => 'menu',
@@ -2367,7 +2569,7 @@ which will add column headers to the table.  E.g.:
 
 A dialog box for a user to upload a file into the application.  When a user
 submits a file the question I<name> can be used later to retrieve a read file
-handle on the file using the function I<qw_upload_fh('NAME')>.
+handle on the file using the function I<qw_upload_file('NAME')>.
 I<qwparam('NAME')> will return the name of the file submitted, but because
 of the variability in how web-browsers submit file names along with the data,
 this field should generally not be used.  Instead, get access to the data
@@ -2388,8 +2590,19 @@ field is processed like any other value field where raw data or a
 coderef can be passed that will be called to return the data.
 
 The I<datafn> field should contain a I<CODE> reference that will be
-called with two arguments: a IO::File filehandle to print to and the
-file name (if appropriate) it's going to print to.
+called with five arguments:
+
+=over
+
+=item a IO::File filehandle to print to
+
+=item the file name (if appropriate) it's going to print to.
+
+=item a QWizard object reference
+
+=item a reference to the primary hash
+
+=item a reference to the question hash
 
 Example usage:
 
@@ -2432,14 +2645,52 @@ the user should pick a single item.  Two references to subroutines must be
 passed in via the I<parent> and I<children> question tags.  Also, a I<root>
 tag should specify the starting point.
 
-The I<parent> function will be passed a wizard reference and a node name.  It
-is expected to return the name of the node's parent.
+Widget Options:
 
-The I<children> function will be passed a wizard reference and a node name.
-It is expected to return an array reference to all the children names.
+=over
 
-Both functions should return B<undef> when no parents or children exist above
-or below the current node.
+=item parent => CODEREF
+
+The I<parent> function will be called with a wizard reference and a
+node name.  It is expected to return the name of the node's parent.
+
+The function should return B<undef> when no parent exists above the
+current node.
+
+=item children => CODEREF
+
+The I<children> function will be passed a wizard reference and a node
+name.  It is expected to return an array reference to all the children
+names.  It may also return a hash reference for some names instead,
+which will contain an internal name tag along with a label tag for
+displaying something to the user which is different than is internally
+passed around as the resulting selected value.
+
+An example return array structure could look like:
+
+   [
+    'simple string 1',
+    'simple string 2',
+    {
+     name => 'myanswer:A',
+     label => 'Answer #A'
+    },
+    {
+     name => 'myanswer:B',
+     label => 'Answer #B'
+    },
+   ]
+
+The function should return B<undef> when no children exist below the
+current node.
+
+=item expand_all => NUM
+
+The I<expand_all> tag may be passed which will indicate that all
+initial option trees sholud be expanded up to the number indicated by
+the expand_all tag.
+
+=back
 
 =item button
 
@@ -2451,6 +2702,10 @@ I<values> clause.
 
 The button widget will be equivalent to pressing the next button.  The next
 primary will be shown after the user presses the button.
+
+If a backend supports key accelerators (GTk2): Button labels can be
+bound to Alt-key accelerators.  See QUESTION KEY-ACCELERATORS below
+for more information.
 
 =item bar
 
@@ -2598,11 +2853,13 @@ error message is returned.  The function only checks that the value
 is non-zero in length.
 
 =item \&qw_integer
+
 =item \&qw_optional_integer
 
 Ensures that the value is an integer value (required or not, respectively.)
 
 =item \&qw_hex
+
 =item \&qw_optional_hex
 
 Ensures that the value is a hex string (required or not, respectively.)
@@ -2637,7 +2894,7 @@ return a 1 if the question is to be displayed or a 0 if not.  The
 question will be entirely skipped if the CODE reference returns a 0.
 
 =item helptext
-=item helpdesc
+=item helpdescr
 
 If specified, these define the help text for a question.  I<helpdescr> should
 be short descriptions printed on screen when the wizard screen is displayed,
@@ -2652,7 +2909,7 @@ value then it will also be the equivelent of pressing the 'Next'
 button at the same time.  With the HTML generator, this requires
 javascript and thus you shouldn't absolutely depend on it working.
 
-=item refresh_on_change
+=item refresh_on_change => 1
 
 If the contents of a screen are generated based on data extracted from
 dynamically changing sources (e.g., a database), then setting this
@@ -2665,7 +2922,44 @@ As an example, Net-Policy uses this functionality to allow users to
 redisplay generated data tables and changes the column that is used
 for sorting depending on a menu widget.
 
+=item handle_results => sub { ... } 
+
+The handle_results tag can specify a CODE reference to be run when the
+questions are answered so each question can perform its own
+processing.  This is sort of like a per-question post_answers hook
+equivalent.
+
 =back
+
+=back
+
+=head3 QUESTION KEY-ACCELERATORS
+
+Some generators (currently only Gtk2 actually) support key
+accelerators so that you can bind alt-keys to widgets.  This is done
+by including a '_' (underscore) character where appropriate to create
+the binding.  EG:
+
+  {
+    type => 'radio',
+    text => 'select one:',
+    values => ['_Option1','O_ption2', 'Option3']
+  }
+
+When Gtk2 gets the above construct it will make Alt-o be equivelent to
+pressing the first option and Alt-p to the second.  It will also
+display the widget with a underline under the character that is bound
+to the widget.  HTML and other non-accelerator supported interfaces
+will strip out the _ character before displaying the string in a widget.
+
+In addition, unless a I<no_auto_accelerators => 1> option is passed to
+the generator creation arguments, widgets will automatically get
+accelerators assigned to them.  In the above case the 't' in Option3
+would automatically get assigned the Alt-t accelerator (the 't' is
+selected because it hasn't been used yet, unlike the o and p
+characters).  You can also prefix something with a ! character to
+force a single widget to not receive an auto-accelerator (EG:
+"!Option4" wouldn't get one).
 
 =head1 SPECIAL VARIABLES
 
@@ -2716,6 +3010,10 @@ modified.
 =over
 
 =item pass_vars
+
+=item qw_cancel
+
+=item no_cancel
 
 =item qwizard_tree
 
@@ -2880,6 +3178,14 @@ HTML generator, they are implemented using cookies).
 
 =back
 
+=head1 HOOKS
+
+TBD: Document the $qw->add_hook and $qw->run_hooks methods that exist.
+
+(basically $qw->add_hook('start_magic', \&coderef) will run coderef at
+the start of the magic function.  Search the QWizard code for
+run_hooks for a list of hook spots available.
+
 =head1 DEBUGGING
 
 The variable I<$QWizard::qwdebug> controls debugging output from QWizard.  If
@@ -2921,8 +3227,44 @@ Wes Hardaker, hardaker@users.sourceforge.net
 
 =head1 SEE ALSO
 
-perl(1), QWizard_Widgets
+For extra information, consult the following manual pages:
 
-Net-Policy: http://net-policy.sourceforge.net/
+=over
+
+=item I<QWizard_Widgets>
+
+Manual page for more information about the Various QWizard display
+generators and the questions and arguments that each one supports.
+This page is actually generated from what the generator actually
+advertises that it supports.
+
+=item I<QWizard::API>
+
+If you get tired of typing anonymous hash references, this API set
+will let you generate some widgets with less typing by using APIs
+instead.
+
+Example API call:
+
+  perl -MQWizard::API -MData::Dumper -e 'print Dumper(qw_checkbox("my ?","it",'A','B', default => 'B'));'
+  $VAR1 = {
+          'text' => 'it',
+          'name' => 'my ?',
+          'default' => 'B',
+          'values' => [
+                        'A',
+                        'B'
+                      ],
+          'type' => 'checkbox'
+        };
+
+=item I<Net-Policy: http://net-policy.sourceforge.net/>
+
+The entire QWizard system was created to support a
+multiple-access-point network management system called "Net-Policy"
+and the SVN repository for Net-Policy actually contains the QWizard
+development tree.
+
+=back
 
 =cut

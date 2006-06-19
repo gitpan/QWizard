@@ -93,6 +93,7 @@ generators make use of.
 
 =head1 WIDGET SUPPORT SUMMARY MATRIX
 
+
   +--------------+----+----+--+--------+
   |              |HTML|Gtk2|Tk|ReadLine|
   +--------------+----+----+--+--------+
@@ -280,6 +281,10 @@ These are the question types known to the QWizard::Generator::HTML generator cla
 
 =item name => single  
 
+=item icons => single  
+
+=item noiconpadding => single  
+
 =back
 
 =item table
@@ -338,6 +343,7 @@ These are the question types known to the QWizard::Generator::HTML generator cla
 
 
 
+
 =head2 QWizard::Generator::Gtk2
 
 These are the question types known to the QWizard::Generator::Gtk2 generator class:
@@ -359,6 +365,8 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 =item values => single  
 
 =item default => single  
+
+=item icon => single  
 
 =back
 
@@ -440,6 +448,8 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 
 =item imagealt => single  
 
+=item addscalebuttons => single  
+
 =back
 
 =item label
@@ -474,6 +484,8 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 
 =item values,labels => single  
 
+=item refresh_on_change => single  
+
 =back
 
 =item paragraph
@@ -501,6 +513,10 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 =item submit => single  
 
 =item refresh_on_change => single  
+
+=item icons => single  
+
+=item noiconpadding => single  
 
 =back
 

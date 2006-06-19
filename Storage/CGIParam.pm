@@ -4,7 +4,7 @@ use strict;
 use QWizard::Storage::Base;
 our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '2.2.3';
+our $VERSION = '3.0';
 use CGI;
 
 our %cached_params = ();
@@ -44,6 +44,8 @@ sub get_all {
 }
 
 sub reset {
+    my ($self) = @_;
+#    $self->{'cgi'}->delete_all();
     %cached_params = ();
 }
 

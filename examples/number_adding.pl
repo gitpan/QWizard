@@ -7,6 +7,7 @@
 #
 
 use QWizard;
+use QWizard::Plugins::History qw(get_history_widget);
 
 %primaries = 
   (
@@ -57,6 +58,7 @@ use QWizard;
 
 my $qw = new QWizard(primaries => \%primaries,
 		     title => 'Adding up numbers',
+		     leftside => [get_history_widget()],
 		     no_confirm => 1);
 
 # $QWizard::qwdebug = 1;

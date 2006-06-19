@@ -1,7 +1,13 @@
 package QWizard::Generator::Tk;
 
+#
+# TODO:
+#  - better layout; currently ugly
+#  - bar support
+#  - left/right side support
+
 use strict;
-my $VERSION = '2.2.3';
+my $VERSION = '3.0';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -19,6 +25,9 @@ sub new {
     my $type = shift;
     my ($class) = ref($type) || $type;
     my $self = {'keep_working_hook' => \&QWizard::Generator::backup_params};
+    for (my $i = 0; $i <= $#_; $i += 2) {
+	$self->{$_[$i]} = $_[$i+1];
+    }
     bless($self, $class);
     $self->add_handler('text',\&QWizard::Generator::Tk::do_entry,
 		       [['single','name'],
@@ -680,12 +689,14 @@ sub do_image {
 	    if ($datastr) {
 		require MIME::Base64;
 		$ph = $self->{'qtable'}->Photo(
-					       -data => 
+					       -format => 'png',
+					       -data =>
 					       MIME::Base64::encode_base64($datastr));
 
 	    } else {
 		# image file
-		$ph = $self->{'qtable'}->Photo(-file => $wiz->{'generator'}{'imagebase'} . $filestr);
+		$ph = $self->{'qtable'}->Photo(-format => 'png',
+					       -file => $wiz->{'generator'}{'imagebase'} . $filestr);
 	    }
 	}
 	if ($ph) {
@@ -763,7 +774,7 @@ sub add_node {
     my $child = $tree->addchild($parent, -text => $label,
 				-data => $name);
     my $ans = $q->{'children'}->($wiz, $node);
-    $tree->setmode($child, $#$ans > -1 ? 'open' : 'none');
+    $tree->setmode($child, ($ans && $#$ans > -1) ? 'open' : 'none');
 
     $tree->selectionSet($child) if ($name eq $q->{'default'});
     if ($name eq $exp) {

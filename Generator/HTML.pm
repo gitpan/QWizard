@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '2.2.3';
+our $VERSION = '3.0';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -93,7 +93,10 @@ sub new {
 			['default'],
 			['single','submit'],
 			['single','refresh_on_change'],
-			['single','name']]);
+			['single','name'],
+			['single','icons'],
+			['single','noiconpadding'],
+		       ]);
     $self->add_handler('label',
 		       \&QWizard::Generator::HTML::do_label,
 		       [['multi','values']]);
@@ -180,18 +183,15 @@ sub init_screen {
 # html always waits
 sub wait_for {
   my ($self, $wiz, $next, $p) = @_;
-  print "<P><input type=submit value=\"" . escapeHTML($next) . "\">\n";
-  $self->do_hidden($wiz, "redo_screen", 0) if (!$self->qwparam('redo_screen'));
-  if ($self->qwparam('allow_refresh') || $p->{'allow_refresh'}) {
-      print "<input type=submit onclick=\"$redo_screen_js\" name=redo_screen_but value=\"Refresh Screen\">\n";
-  }
   print $self->{'cgi'}->end_form();
+  print "</tr>\n" if (!exists($self->{'cssurl'}));
+  $self->close_div_or_table(); # end for <div class="qwizard"> in start_primaries
   return 1;
 }
 
 sub do_css {
     my ($self, $class, $name, $noidstr) = @_;
-    if ($self->{'cssurl'}) {
+    if (exists($self->{'cssurl'})) {
 	my $idstr = '';
 	$idstr = $class if (!$noidstr);
 	return " class=\"$class\" id=\"$idstr$name\" ";
@@ -199,17 +199,81 @@ sub do_css {
     return "";
 }
 
+sub open_div_or_table {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "<div class=\"" . $_[0] . "\">\n";
+    } else {
+	print "<table $_[1]>\n";
+    }
+}
+
+sub close_div_or_table {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "</div>\n";
+    } else {
+	print "</table>\n";
+    }
+}
+
+sub open_div_or_tr {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "<div class=\"" . $_[0] . "\">\n";
+    } else {
+	print "<tr $_[1]>\n";
+    }
+}
+
+sub open_span_or_td {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "<span class=\"" . $_[0] . "\">\n";
+    } else {
+	print "<td valign=\"top\" $_[1]>\n";
+    }
+}
+
+sub close_span_or_td {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "</span>\n";
+    } else {
+	print "</td>\n";
+    }
+}
+
+sub close_div_or_tr {
+    my $self = shift;
+    if (exists($self->{'cssurl'})) {
+	print "</div>\n";
+    } else {
+	print "</tr>\n";
+    }
+}
+
+sub get_image {
+    my ($self, $img, $css, $name) = @_;
+
+    return "<img" . $self->do_css($css,$name) .
+      " src=\"" . $self->{'imgpath'} . escapeHTML($img) . "\"> ";
+}
+
 sub do_question {
     my ($self, $q, $wiz, $p, $text, $qcount) = @_;
     return if (!$text && $q->{'type'} eq 'hidden');
+    my $padtext;
+    $padtext=" style=\"padding-left: 2em;\"" if ($q->{'indent'});
     print "  <tr" . $self->do_css('qwquestion',$q->{'name'}) . ">";
     print "<td" . $self->do_css('qwquestiontext',$q->{'name'}) . 
-      " valign=top>\n";
+      " valign=top $padtext>\n";
+    $text = QWizard::Generator::remove_accelerator($text);
     if ($q->{'helptext'}) {
 	print $wiz->make_help_link($p, $qcount),
-	  escapeHTML($text), "</a>\n";
+	  $self->maybe_escapeHTML($text, $q->{'noescape'}), "</a>\n";
     } else {
-	print escapeHTML($text);
+	print $self->maybe_escapeHTML($text, $q->{'noescape'});
     }
     if ($q->{'helpdesc'}) {
 
@@ -220,7 +284,8 @@ sub do_question {
       if (ref($helptext) eq "CODE") {
           $helptext = $helptext->();
       }
-      print "<br><small><i>" . escapeHTML($helptext) . "</i></small>";
+      print "<br><small><i>" . 
+	$self->maybe_escapeHTML($helptext, $q->{'noescape'}) . "</i></small>";
     }
     print "</td><td" . $self->do_css('qwquestion',$q->{'name'}, 1) . ">\n";
 }
@@ -237,11 +302,13 @@ sub do_question_end {
 
 sub start_questions {
     my ($self, $wiz, $p, $title, $intro) = @_;
+#    print "<td id=\"qwmain\" width=\"100%\">\n";
+    print "<span id=\"qwmain\">\n";
     if ($title) {
 	print $self->{'cgi'}->h1(escapeHTML($title)),"\n";
     }
     if ($intro) {
-	$intro = escapeHTML($intro);
+	$intro = $self->maybe_escapeHTML($intro, $p->{'noescape'});
 	$intro =~ s/\n\n/\n<p class=\"qwintroduction\">\n/g;
 	print "<p class=\"qwintroduction\">$intro\n<p class=\"qwintroduction\">\n";
     }
@@ -252,7 +319,8 @@ sub start_questions {
 sub end_questions {
     my ($self, $wiz, $p) = @_;
     print "</table>\n";
-
+#    print "</td>\n";
+    print "</span>\n";
     #
     # This focus() call should allow the user to type directly into the
     # first text box without having to click there first.
@@ -302,7 +370,77 @@ sub do_bar {
 sub do_top_bar {
     my ($self, $q, $wiz, $p, $widgets) = @_;
 
-    $self->do_a_table([$widgets], 0, $wiz, $q, $p);
+    print "<tr><td colspan=\"10\">" if (!exists($self->{'cssurl'}));
+    $self->do_a_table([$widgets], 0, $wiz, $q, $p, 'topbar', 'topbar','topbar');
+    print "</td></tr>\n" if (!exists($self->{'cssurl'}));
+}
+
+sub start_center_section {
+    my ($self) = @_;
+    $self->open_span_or_td("centersection");
+}
+
+sub end_center_section {
+    my ($self, $wiz, $p, $next) = @_;
+    print "<div class=\"buttons\">\n";
+    print "  <input class=qwnext type=submit value=\"" . escapeHTML(QWizard::Generator::remove_accelerator($next)) . "\">\n";
+    $self->do_hidden($wiz, "redo_screen", 0) if (!$self->qwparam('redo_screen'));
+    if ($self->qwparam('allow_refresh') || $p->{'allow_refresh'}) {
+	print "<input type=submit onclick=\"$redo_screen_js\" name=redo_screen_but value=\"Refresh Screen\">\n";
+    }
+    print "  <input class=qwcancel name=\"qw_cancel\" type=submit value=\"Cancel\">\n" if (!$self->{'no_cancel'});
+    print "</div>\n";
+    $self->close_span_or_td();
+}
+
+sub start_primaries {
+    my ($self) = @_;
+    # this is closed in wait_for()
+    $self->open_div_or_table("qwizard");
+    print "<tr>\n" if (!exists($self->{'cssurl'}));
+}
+
+sub do_side {
+    my ($self, $spot, $q, $wiz, $p, $widgets) = @_;
+    $self->open_span_or_td($spot);
+
+    my @tableinfo;
+    foreach my $w (@$widgets) {
+	next if (!$w);
+	if (ref($w) eq 'ARRAY') {
+	    # special stand-alone side component
+	    my $title = "";
+	    $title = shift(@$w) if (ref($w->[0]) eq '');
+	    my $id = $title;
+	    $id =~ s/\W//;
+	    print "<div id=\"side$id\" class=\"side\">\n";
+	    print "<div id=\"sidetitle$id\" class=\"sidetitle\">" .
+	      escapeHTML($title) . "</div>\n" if ($title);
+	    print "<table id=\"sidecontent$id\" class=\"sidecontent\">\n";
+	    foreach my $widget (@$w) {
+		# print "widget: $widget\n";
+		$wiz->ask_question($p, $widget);
+	    }
+	    print "</table>\n";
+	    print "</div>\n";
+	} else {
+	    # add to the default (bottom) table component
+	    push @tableinfo, [$w];
+	}
+    }
+
+    $self->do_a_table(\@tableinfo, 0, $wiz, $q, $p, $spot);
+    $self->close_span_or_td();
+}
+
+sub do_left_side {
+    my $self = shift;
+    $self->do_side('leftside', @_);
+}
+
+sub do_right_side {
+    my $self = shift;
+    $self->do_side('rightside', @_);
 }
 
 ##################################################
@@ -311,7 +449,7 @@ sub do_top_bar {
 
 sub do_button {
     my ($self, $q, $wiz, $p, $vals) = @_;
-    print "<input" . $self->do_css('qwbutton',$q->{'name'}) . " type=submit name=\"$q->{'name'}\" value=\"" . $vals . "\">\n";
+    print "<input" . $self->do_css('qwbutton',$q->{'name'}) . " type=submit name=\"$q->{'name'}\" value=\"" . QWizard::Generator::remove_accelerator($vals) . "\">\n";
 }
 
 sub do_checkbox {
@@ -342,6 +480,15 @@ sub do_multicheckbox {
     foreach my $v (@$vals) {
 	$count++;
 	my $otherstuff;
+
+	if ($wiz->qwparam('redoing_now')) {
+	    $otherstuff .= "checked"
+	      if ($wiz->qwparam($q->{'name'} . $v) eq $v);
+	} else {
+	    $otherstuff .= "checked" if ($defs->[$count]);
+	}
+	
+
 	$otherstuff .= "checked" if ($defs->[$count]);
 	if ($submit) {
 	    $otherstuff .= " onclick=\"this.form.submit()";
@@ -349,14 +496,18 @@ sub do_multicheckbox {
 	if ($refresh_on_change) {
 	    $otherstuff .= " onclick=\"$redo_screen_js\"";
 	}
-	my $l = (($labels->{$v}) ? $labels->{$v} : "$v");
+	my $l = QWizard::Generator::remove_accelerator(($labels->{$v}) ? $labels->{$v} : "$v");
 	print "<tr><td>" . escapeHTML($l)  . "</td>\n";
-	print "<td><input" . $self->do_css('qwmulticheckbox',$q->{'name'}) . " $otherstuff value=\"" . escapeHTML($v) . 
-	  "\" type=checkbox name=\"$q->{name}$l\"></td></tr>";
+	print "<td><input" . 
+	  $self->do_css('qwmulticheckbox',$q->{'name'}) . 
+	    " $otherstuff value=\"" . 
+	      escapeHTML($v) .
+		"\" type=checkbox name=\"" .
+		  escapeHTML("$q->{name}$v") . "\"></td></tr>";
 	# XXX: hack:
 	push @{$wiz->{'passvars'}},$q->{'name'} . $v;
-	$startname = "$q->{name}$l" if ($count == 0);
-	$endname = "$q->{name}$l" if ($count == $#$vals);
+	$startname = escapeHTML("$q->{name}$v") if ($count == 0);
+	$endname = escapeHTML("$q->{name}$v") if ($count == $#$vals);
     }
 
     print "</table>";
@@ -437,20 +588,31 @@ sub do_multicheckbox {
 
 sub do_radio {
     my ($self, $q, $wiz, $p, $vals, $labels, $def,
-	$submit, $refresh_on_change, $name) = @_;
-    my @stuff;
-    push @stuff, -onclick, "this.form.submit()" if ($submit);
-    push @stuff, -onclick, "$redo_screen_js" if ($refresh_on_change);
+	$submit, $refresh_on_change, $name, $icons, $iconwidth) = @_;
+    my $stuff;
+    $stuff = " onclick=\"this.form.submit()\" " if ($submit);
+    $stuff = " onclick=\"$redo_screen_js\" " if ($refresh_on_change);
 
-    print $self->{'cgi'}->radio_group(-name => $name,
-				      -id => "qwradio$name",
-				      -class => 'qwradio',
-				      -values => $vals,
-				      -linebreak => 'true',
-				      -labels => $labels,
-				      -override => 1,
-				      -default => $def,
-				      @stuff),"\n";
+    # remove the key accelerators
+    my %passlabs = %$labels;
+    # remove key bindings specifiers
+    map {
+	$passlabs{$_} = QWizard::Generator::remove_accelerator($passlabs{$_});
+    } keys(%passlabs);
+
+    # correct the ordering
+    my @passvals = reverse @$vals;
+
+    foreach my $value (@passvals) {
+	print "  <input type=\"radio\" name=\"$name\" value=\"" .
+	  escapeHTML($value) . "\" $stuff " .
+	    $self->do_css('qwradio',$q->{'name'}) . " />\n    " .
+	      (($icons->{$value}) ?
+	       $self->get_image($icons->{$value}, 'qwradioimg', $q->{'name'}) :
+	       (($iconwidth) ? "<span style=\"width: ${iconwidth};\" />" : "")).
+		 $passlabs{$value} .
+		   "<br />\n";
+    }
 }
 
 
@@ -686,7 +848,8 @@ sub do_table {
     my ($self, $q, $wiz, $p, $table, $headers) = @_;
     my $color = $self->{'tablebgcolor'} || $self->{'bgcolor'};
     print "<table" . $self->do_css('qwtable',$q->{'name'}) .
-      " bgcolor=$color border=1>\n";
+      (exists($self->{'cssurl'}) ? "" : "bgcolor=$color border=1>") . 
+       "\n";
 
     if ($headers) {
 	print " <tr " . $self->do_css('qwtableheaderrow',$q->{'name'}) .
@@ -703,17 +866,18 @@ sub do_table {
 }
 
 sub do_a_table {
-    my ($self, $table, $started, $wiz, $q, $p) = @_;
-    print "<table" . $self->do_css('qwsubtable',$q->{'name'}) . ">"
+    my ($self, $table, $started, $wiz, $q, $p, $name) = @_;
+    $name = $q->{'name'} if (!$name);
+    print "<table" . $self->do_css('qwsubtable',$name) . ">"
       if (!$started);
     foreach my $row (@$table) {
-	print " <tr" . $self->do_css('qwtablerow',$q->{'name'}) . ">\n";
+	print " <tr" . $self->do_css('qwtablerow',$name) . ">\n";
 	foreach my $column (@$row) {
 	    print "<td>";
 	    if (ref($column) eq "ARRAY") {
 	        $self->do_a_table($column, 0, $wiz, $q, $p);
 	    } elsif (ref($column) eq "HASH") {
-		print "<table" . $self->do_css('qwtablewidget',$q->{'name'}) .
+		print "<table" . $self->do_css('qwtablewidget',$name) .
 		  ">\n";
 		my $param = $wiz->ask_question($p, $column);
 		push @{$wiz->{'passvars'}}, $param;
@@ -739,7 +903,7 @@ sub do_graph {
 	
 	# XXX: net-policy specific hack!
 	print "<img" . $self->do_css('qwgraph',$q->{'name'}) .
-	  " src=\"?webfile=$file\">\n";
+	  " src=\"" . $self->{'imgpath'} . escapeHTML($file) . "\">\n";
     } else {
 	print "graphs not supported without additional software\n";
     }
@@ -759,7 +923,7 @@ sub do_image {
 	} else {
 	    $image = $imgfile;
 	}
-	my $imagesrc = "src=\"?webfile=$image\"";
+	my $imagesrc = "src=\"" . $self->{'imgpath'} . escapeHTML($image) ."\"";
 
 	#
 	# If an alt tag was specified, create the alt image message.
@@ -832,7 +996,7 @@ EOF
 #TODO: Support passing in a hash for tree data (instead of just a function)
 
 sub do_tree {
-    my ($self, $q, $wiz, $p, $labels) = @_;
+    my ($self, $q, $wiz, $p, $labels, $expand_all, $def) = @_;
 
     my $treename = $q->{'name'} || 'tree';
 
@@ -866,7 +1030,7 @@ sub do_tree {
 	    }
 	}
     } else { #ensure that the default is initially visible
-	$selected = $q->{'default'} || $q->{'root'} || return;
+	$selected = $def || $q->{'root'} || return;
 	my $cur = $selected;
 	until ($cur eq $q->{'root'}) {
 	    $cur = get_name($q->{'parent'}->($wiz, $cur) || return);
@@ -900,7 +1064,8 @@ sub do_tree {
 EOF
 
     print "<div " . $self->do_css('qwtree',$treename) . ">\n";
-    print_branch($wiz, $q, $q->{'root'}, $selected, 0, $labels, @expand);
+    $self->print_branch($wiz, $q, $q->{'root'}, $selected, 0, $labels,
+			\@expand, $expand_all);
     print "</div>\n";
 }
 
@@ -917,35 +1082,37 @@ sub get_name {
 #recursively print out the tree
 sub print_branch {
     # XXX: css this
-    my ($wiz, $q, $cur, $selected, $nest, $labels, @expand) = @_;
+    my ($self, $wiz, $q, $cur, $selected, $nest, $labels,
+	$expand, $expand_all) = @_;
 
     print "<br>" if $nest;
     for my $i (1 .. (5 * $nest)) { print "&nbsp;"; }
 
     my $children = $q->{'children'}->($wiz, get_name($cur));
     if ($#$children > -1) {
-	my @ans = grep($_ eq get_name($cur), @expand); 
-	if ($#ans > -1) { #is it expanded?
-	    make_link('minus', 3, $cur, $selected, $q, $labels);
+	my @ans = grep($_ eq get_name($cur), @$expand); 
+	if ($#ans > -1 || $expand_all > 0) { #is it expanded?
+	    $self->make_link('minus', 3, $cur, $selected, $q, $labels);
 	    foreach my $child (@$children) {
-		print_branch($wiz, $q, $child, $selected, $nest + 1, $labels, @expand);
+		$self->print_branch($wiz, $q, $child, $selected,
+				    $nest + 1, $labels, $expand, $expand_all-1);
 	    }
 	} else {
-	    make_link('plus', 2, $cur, $selected, $q, $labels);
+	    $self->make_link('plus', 2, $cur, $selected, $q, $labels);
 	}
     } else {
-	make_link('blank', 0, $cur, $selected, $q, $labels);
+	$self->make_link('blank', 0, $cur, $selected, $q, $labels);
     }
 }
 
 # prints a single node, and any required links, etc
 sub make_link {
     # XXX: css this
-    my ($imgtype, $oper, $cur, $selected, $q, $labels) = @_;
+    my ($self, $imgtype, $oper, $cur, $selected, $q, $labels) = @_;
     my $name = get_name($cur);
     my $treename = $q->{'name'} || 'tree';
     print "<a href=\"javascript:${treename}_select('$name', $oper)\">" if $oper;
-    print "<img src=\"?webfile=tree_$imgtype.png\" border=0>";
+    print "<img src=\"$self->{'imgpath'}tree_$imgtype.png\" border=0>";
     print "</a>" if $oper;
     print "&nbsp;";
     my $label;
@@ -1068,5 +1235,12 @@ sub make_displayable {
 
     return $str;
 }
+
+sub maybe_escapeHTML {
+    my ($self, $text, $noescapeit) = @_;
+    return $text if ($self->{'noescape'} || $noescapeit);
+    return escapeHTML($text);
+}
+
 
 1;

@@ -1,12 +1,13 @@
 package QWizard::Generator::Best;
 
 use strict;
-our $VERSION = '2.2.3';
+our $VERSION = '3.0';
 
 sub new {
+    my $type = shift;
+
     # first check if we're in a web server...
     # XXX: there is probably a better way to determine things than this.
-
     if (exists($ENV{'SERVER_NAME'})) {
 	my $have_html = eval { require QWizard::Generator::HTML };
 	if (!$have_html) {
