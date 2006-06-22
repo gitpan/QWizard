@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.02';
+my $VERSION = '3.03';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -149,12 +149,15 @@ sub create_qw_label {
 	$label->set_mnemonic_widget($activatewidget);
     }
 
-    $icon = $self->find_image_path($icon);
+    my $iconpath = $self->find_image_path($icon);
 
     # no icon?  -> We're done
-    if (!$icon || ! -f $icon) {
+    if (!$icon || ! -f $iconpath) {
 	my ($padx, $pady) = $label->get_padding();
 	$label->set_padding($padx + $noimagespacing, $pady);
+	# if both wantarray && they requested an icon, return an array
+	# (can't use just wantarray since func(create_qw_label("hi"))
+	# doesn't work for simple calling usage)
 	return (undef, $label, undef) if (wantarray && $icon);
 	return $label;
     }
@@ -162,9 +165,9 @@ sub create_qw_label {
     # if an icon is requested then create an icon to display to the
     # left of the text
     my $hbox = Gtk2::HBox->new(FALSE, 6);
-    my $image = Gtk2::Image->new_from_file($icon);
-    $hbox->pack_start(Gtk2::Image->new_from_file($icon), FALSE, FALSE, 0)
-      if ($icon);
+    my $image = Gtk2::Image->new_from_file($iconpath);
+    $hbox->pack_start(Gtk2::Image->new_from_file($iconpath), FALSE, FALSE, 0)
+      if ($iconpath);
     $hbox->pack_start($label, FALSE, FALSE, 0);
 
     return ($hbox, $label, $image) if (wantarray);
@@ -404,7 +407,7 @@ sub do_ok_cancel {
 	  ($hb, $self->{'prevbutlab'}, $self->{'prevbuticon'}) =
 	    $self->create_qw_label($wiz->{'back_text'} || '_Back',
 			    FALSE, 'gtk-go-back.png', $self->{'prevbut'});
-	  $self->{'prevbut'}->add($hb || $self->{'nextbutlab'});
+	  $self->{'prevbut'}->add($hb || $self->{'prevbutlab'});
 
 	  $self->{'bot'}->pack_start($self->{'prevbut'}, FALSE, FALSE, 0);
 	  $self->{'prevbut'}->signal_connect(clicked => \&goto_prev);
@@ -425,7 +428,7 @@ sub do_ok_cancel {
 	  ($hb, $self->{'refreshbutlab'}, $self->{'refreshbuticon'}) =
 	    $self->create_qw_label('_Refresh',
 			    FALSE, 'gtk-refresh.png', $self->{'refreshbut'});
-	  $self->{'refreshbut'}->add($hb || $self->{'nextbutlab'});
+	  $self->{'refreshbut'}->add($hb || $self->{'refreshbutlab'});
 
 	  $self->{'refreshbut'} = Gtk2::Button->new('_Refresh');
 	  $self->{'bot'}->pack_start($self->{'refreshbut'}, FALSE, FALSE, 0);
@@ -438,7 +441,7 @@ sub do_ok_cancel {
 	    $self->create_qw_label($wiz->qwparam('QWizard_Cancel') ||
 			    $wiz->{'cancel_text'} || 'Cancel',
 			    FALSE, 'gtk-cancel.png', $self->{'cancelbut'});
-	  $self->{'canbut'}->add($hb || $self->{'nextbutlab'});
+	  $self->{'canbut'}->add($hb || $self->{'cancelbutlab'});
 
 	  $self->{'bot'}->pack_end($self->{'canbut'}, FALSE, FALSE, 0);
 	  $self->{'canbut'}->signal_connect(clicked => \&goto_top);
