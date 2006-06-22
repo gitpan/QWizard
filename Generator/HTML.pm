@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '3.0';
+our $VERSION = '3.01';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;

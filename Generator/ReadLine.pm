@@ -5,7 +5,7 @@ require Exporter;
 use QWizard::Generator;
 
 use strict;
-our $VERSION = '3.0';
+our $VERSION = '3.01';
 
 @QWizard::Generator::ReadLine::ISA = qw(Exporter QWizard::Generator);
 
@@ -102,6 +102,11 @@ sub end_questions {
 sub do_entry {
     my ($self, $q, $wiz, $p, $name, $def) = @_;
     $self->read_it($q, $name, $def);
+}
+
+sub do_error {
+    my ($self, $q, $wiz, $p, $err) = @_;
+    print "ERROR: $err\n";
 }
 
 sub do_textbox {

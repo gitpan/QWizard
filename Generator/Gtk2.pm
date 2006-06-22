@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.0';
+my $VERSION = '3.01';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -155,6 +155,7 @@ sub create_qw_label {
     if (!$icon || ! -f $icon) {
 	my ($padx, $pady) = $label->get_padding();
 	$label->set_padding($padx + $noimagespacing, $pady);
+	return (undef, $label, undef) if (wantarray);
 	return $label;
     }
 
@@ -403,7 +404,7 @@ sub do_ok_cancel {
 	  ($hb, $self->{'prevbutlab'}, $self->{'prevbuticon'}) =
 	    $self->create_qw_label($wiz->{'back_text'} || '_Back',
 			    FALSE, 'gtk-go-back.png', $self->{'prevbut'});
-	  $self->{'prevbut'}->add($hb);
+	  $self->{'prevbut'}->add($hb || $self->{'nextbutlab'});
 
 	  $self->{'bot'}->pack_start($self->{'prevbut'}, FALSE, FALSE, 0);
 	  $self->{'prevbut'}->signal_connect(clicked => \&goto_prev);
@@ -414,7 +415,7 @@ sub do_ok_cancel {
 	  ($hb, $self->{'nextbutlab'}, $self->{'nextbuticon'}) =
 	    $self->create_qw_label($nexttext || $wiz->{'next_text'} || '_Next',
 			    FALSE, 'gtk-go-forward.png', $self->{'nextbut'});
-	  $self->{'nextbut'}->add($hb);
+	  $self->{'nextbut'}->add($hb || $self->{'nextbutlab'});
 	  $self->{'bot'}->pack_start($self->{'nextbut'}, FALSE, FALSE, 0);
 	  $self->{'nextbut'}->signal_connect(clicked => \&goto_next);
 	  $self->{'nextbut'}->{'generator'} = $self;
@@ -424,7 +425,7 @@ sub do_ok_cancel {
 	  ($hb, $self->{'refreshbutlab'}, $self->{'refreshbuticon'}) =
 	    $self->create_qw_label('_Refresh',
 			    FALSE, 'gtk-refresh.png', $self->{'refreshbut'});
-	  $self->{'refreshbut'}->add($hb);
+	  $self->{'refreshbut'}->add($hb || $self->{'nextbutlab'});
 
 	  $self->{'refreshbut'} = Gtk2::Button->new('_Refresh');
 	  $self->{'bot'}->pack_start($self->{'refreshbut'}, FALSE, FALSE, 0);
@@ -437,7 +438,7 @@ sub do_ok_cancel {
 	    $self->create_qw_label($wiz->qwparam('QWizard_Cancel') ||
 			    $wiz->{'cancel_text'} || 'Cancel',
 			    FALSE, 'gtk-cancel.png', $self->{'cancelbut'});
-	  $self->{'canbut'}->add($hb);
+	  $self->{'canbut'}->add($hb || $self->{'nextbutlab'});
 
 	  $self->{'bot'}->pack_end($self->{'canbut'}, FALSE, FALSE, 0);
 	  $self->{'canbut'}->signal_connect(clicked => \&goto_top);

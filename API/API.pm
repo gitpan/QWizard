@@ -2,7 +2,7 @@ package QWizard::API;
 
 use strict;
 
-our $VERSION = '3.0';
+our $VERSION = '3.01';
 require Exporter;
 
 our @ISA = qw(Exporter);

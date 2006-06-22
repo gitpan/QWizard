@@ -1,7 +1,7 @@
 package QWizard::Generator::Best;
 
 use strict;
-our $VERSION = '3.0';
+our $VERSION = '3.01';
 
 sub new {
     my $type = shift;
