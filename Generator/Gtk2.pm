@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.01';
+my $VERSION = '3.02';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -155,7 +155,7 @@ sub create_qw_label {
     if (!$icon || ! -f $icon) {
 	my ($padx, $pady) = $label->get_padding();
 	$label->set_padding($padx + $noimagespacing, $pady);
-	return (undef, $label, undef) if (wantarray);
+	return (undef, $label, undef) if (wantarray && $icon);
 	return $label;
     }
 
