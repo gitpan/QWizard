@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.03';
+our $VERSION = '3.04';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -280,6 +280,16 @@ sub do_primaries {
 
     $self->start_page();
     $self->ask_questions();
+}
+
+sub finished {
+    my $self = shift;
+    $self->{'generator'}->finished();
+}
+
+sub set_progress {
+    my $self = shift;
+    $self->{'generator'}->set_progress(@_);
 }
 
 sub has_actions {
@@ -738,7 +748,7 @@ sub primary_was_run {
 sub confirm_or_run_actions {
     my ($self) = @_;
     $self->start_page();
-    if ($self->qwparam('wiz_confirmed') || $self->{no_confirm} ||
+    if ($self->qwparam('wiz_confirmed') || $self->{'no_confirm'} ||
 	$self->qwparam('no_confirm')) {
 	$self->{'state'} = $states{'ACTING'};
 
@@ -2998,7 +3008,22 @@ just that primary screen.
 =item QWizard_next
 
 The button text to display for the "Next" button.  This defaults to
-"Next" but can be overridden using this parameter.
+"_Next" but can be overridden using this parameter.
+
+=item QWizard_commit
+
+The button text to display for the "Commit" button.  This defaults to
+"_Commit" but can be overridden using this parameter.  The commit
+button is shown after the questions have been asked and the
+actions_descr's are being shown to ask the user if they really want to
+run the actions.
+
+=item QWizard_finish
+
+The button text to display for the "Finish" button.  This defaults to
+"_Finish" but can be overridden using this parameter.  The finish
+button is shown after the actions have been run and the results are
+being displayed.
 
 =back
 
@@ -3060,6 +3085,20 @@ I<magic>() loop and return later with the next set of data to process.  The
 I<magic>() routine will automatically restart where it left off if the last
 set of primaries being displayed was never finished.  This is common for
 stateless generators like HTTP and HTML.
+
+=item $qw->finished();
+
+Closes the open qwizard window.  Useful after your magic() routine has
+ended and you don't intend to call it again.  Calling finished() will
+remove the QWizard window from visibility.
+
+=item $qw->set_progress(FRACTION, TEXT);
+
+If available, some generators (Gtk2 can) may be able to display a
+progress meter.  If they are, calling this function inside action
+clauses, for example, will start the display of this meter with
+I<FRACTION> complete (0 <= I<FRACTION> <= 1).  The I<TEXT> is optional
+and if left blank will be set to I<NN%> showing the percentage complete.
 
 =item $qw->add_todos([options], primary_name, ...);
 

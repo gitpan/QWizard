@@ -5,7 +5,7 @@ use QWizard::Generator::HTML;
 use Exporter;
 use CGI qw(escapeHTML);
 
-our $VERSION = '3.03';
+our $VERSION = '3.04';
 
 @QWizard::Generator::HTML::Vertical::ISA =
   qw(Exporter QWizard::Generator::HTML);

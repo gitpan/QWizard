@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '3.03';
+our $VERSION = '3.04';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -1150,7 +1150,8 @@ sub end_confirm {
     my ($self, $wiz) = @_;
     print "</ul></ul>\n";
     # XXX: css these.  id or class?
-    print "<input type=submit name=wiz_confirmed value=\"Commit\">\n";
+    print "<input type=submit name=wiz_confirmed value=\"" .
+      ($wiz->qwparam('QWizard_commit') || "Commit") . "\">\n";
     print "<input type=submit name=wiz_canceled value=\"Cancel\">\n";
     print $self->{'cgi'}->end_form();
     $self->{'started'} = $wiz->{'started'} = 0;
@@ -1185,7 +1186,9 @@ sub end_actions {
     print "</pre>\n";
     print "</div>\n";
     print $self->{'cgi'}->h2('Done!');
-    print "<a href=\"$wiz->{top_location}\">Return to Top</a>\n";
+    print "<a href=\"$wiz->{top_location}\">" .
+      ($wiz->qwparam('QWizard_finish') || "Return to Top") .
+	"</a>\n";
     $self->{'started'} = $wiz->{'started'} = 0;
 }
 

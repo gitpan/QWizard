@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '3.03';
+our $VERSION = '3.04';
 use QWizard::Storage::Memory;
 require Exporter;
 use File::Temp qw(tempfile);
@@ -528,6 +528,10 @@ sub end_main_section {}
 sub start_center_section {}
 # called once after last primary on screen:
 sub end_center_section {}
+# called once after qwizard is completely finished; should remove windows, etc.
+sub finished {}
+# called to display a progress window
+sub set_progress {}
 
 
 ## All other missing functions are errors

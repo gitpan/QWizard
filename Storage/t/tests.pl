@@ -64,7 +64,8 @@ SKIP:
       if (ref($stobj) eq 'QWizard::Storage::CGIParam');
     $stobj->set('othername','Yamar');
     my $str = $stobj->to_string;
-    ok($str eq 'myname_-Wes_-othername_-Yamar', "Encoding to a string works");
+    ok($str eq 'myname_-Wes_-othername_-Yamar' ||
+       $str eq 'othername_-Yamar_-myname_-Wes', "Encoding to a string works");
 
     # 14: from_string
     $stobj->reset();

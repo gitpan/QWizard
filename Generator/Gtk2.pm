@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.03';
+my $VERSION = '3.04';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -257,6 +257,7 @@ sub goto_prev {
 
 sub our_mainloop {
     my ($self, $wiz, $p) = @_;
+    $self->{'progwindow'}->hide if ($self->{'progwindow'});
     $self->{'window'}->show_all;
     if ($self->{'nointro'}) {
 	$self->{'introframe'}->hide;
@@ -315,7 +316,7 @@ sub init_screen {
 	$self->{'window'}->set_border_width(5);
 	$self->{'window'}->set_default_size(900,650);
 	$self->{'window'}->signal_connect(delete_event => \&our_exit);
-	$self->{'window'}->signal_connect(destroy => \&our_exit);
+#	$self->{'window'}->signal_connect(destroy => \&our_exit);
 	
 	## parentvbox: the master vbox
 	# contains the topbar, the main widgets (mainhbox), and the buttons
@@ -394,6 +395,46 @@ sub init_screen {
     $self->initialize_auto_accelerator();
 }
 
+sub process_gtk2_events {
+    Gtk2->main_iteration_do(FALSE); # once at least to be sure
+    while (Gtk2->events_pending) {
+	Gtk2->main_iteration_do(FALSE);
+    }
+    Gtk2::Gdk->flush;
+}
+
+sub finished {
+    my $self = shift;
+    if ($self->{'window'}) {
+	$self->{'window'}->hide();
+	
+	$self->process_gtk2_events;
+    }
+}
+
+sub set_progress {
+    my ($self, $progress, $text) = @_;
+    if (!$self->{'progress'}) {
+	$self->{'progwindow'} = Gtk2::Window->new('toplevel');
+	$self->{'progress'} = Gtk2::ProgressBar->new;
+	return if (!$self->{'progress'} || !$self->{'progress'});
+	$self->{'progwindow'}->add($self->{'progress'});
+	$self->{'progwindow'}->set_title("Progress");
+	my ($x, $y) = $self->{'window'}->get_position();
+	my ($w, $h) = $self->{'window'}->get_size();
+	$self->{'progwindow'}->move($x + int($w/2), $y + int($h/2));
+	$self->{'progwindow'}->show_all;
+    }
+    $self->{'progress'}->set_text($text || (int(100*$progress) . "%"));
+    $self->{'progress'}->show();
+    $self->{'progress'}->set_fraction($progress);
+    $self->process_gtk2_events;
+}
+
+#
+# note: new widgets added here and memorized for if() statements need to be
+# discarded from the self hash in finished();
+#
 sub do_ok_cancel {
   my ($self, $nexttext, $wiz, $p) = @_;
   if (!$self->{'bot'}) {
@@ -1706,7 +1747,7 @@ sub end_confirm {
     my ($self, $wiz) = @_;
     # this will be deleted by the cancel button if they press it.
     $self->do_hidden($wiz, 'wiz_confirmed', 'Commit');
-    $self->do_ok_cancel("Commit", $wiz);
+    $self->do_ok_cancel($wiz->qwparam('QWizard_commit') || "_Commit", $wiz);
     $self->our_mainloop();
     return 1;
 }
@@ -1736,7 +1777,7 @@ sub start_actions {
 sub end_actions {
     my ($self, $wiz) = @_;
     $self->put_it('Done',3,1);
-    $self->do_ok_cancel("Finish", $wiz);
+    $self->do_ok_cancel($wiz->qwparam('QWizard_finish') || "_Finish", $wiz);
     $self->clear_params();
     $self->our_mainloop();
     return 1;
