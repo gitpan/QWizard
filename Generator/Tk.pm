@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.04';
+my $VERSION = '3.05';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -58,7 +58,8 @@ sub new {
 		       [['multi','values'],
 			['default'],
 			['single', 'submit'],
-			['single','refresh_on_change']]);
+			['single','refresh_on_change'],
+			['single','button_label']]);
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::Tk::do_multicheckbox,
 		       [['multi','default'],
@@ -177,7 +178,7 @@ sub make_top {
     }
     if (!$self->{'qintro'}) {
 	$self->{'qintro'} = $self->{'top'}->Text(-width => 80, 
-						 -height => 4,
+#						 -height => 4,
 						 -wrap => 'word',
 						 -relief => 'flat');
 	$self->{'qintro'}->pack(-side => 'top', -expand => 1, -fill => 'both');
@@ -427,13 +428,14 @@ sub do_button {
 }
 
 sub do_checkbox {
-    my ($self, $q, $wiz, $p, $vals, $def) = @_;
+    my ($self, $q, $wiz, $p, $vals, $def, $button_label) = @_;
     my $x;
     $vals = [1, 0] if ($#$vals == -1);
     my $chk = $self->{'qtable'}->Checkbutton(-textvariable => \$x,
 					     -anchor => 'w',
   					     -onvalue => $vals->[0],
   					     -offvalue => $vals->[1],
+					     -text => $button_label,
 					     -variable => 
 					     \$self->{'datastore'}{'vars'}{$q->{'name'}},
 					     @{$self->get_extra_args($q, $wiz,

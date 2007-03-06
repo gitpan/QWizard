@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.04';
+my $VERSION = '3.05';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -39,7 +39,8 @@ sub new {
 			['default'],
 			['single','name'],
 			['single','submit'],
-			['single','refresh_on_change']]);
+			['single','refresh_on_change'],
+			['single','button_label']]);
     $self->add_handler('label',
 		       \&QWizard::Generator::Gtk2::do_label,
 		       [['multi','values']]);
@@ -987,9 +988,12 @@ sub check_callback {
 
 sub do_checkbox {
     my ($self, $q, $wiz, $p, $vals, $def, $name,
-	$submit, $refresh_on_change) = @_;
+	$submit, $refresh_on_change, $checkbutton_label) = @_;
     $vals = [1, 0] if ($#$vals == -1);
     my $cb = Gtk2::CheckButton->new();
+    if ($checkbutton_label) {
+	$cb->set_label($checkbutton_label);
+    }
     my $text = $self->add_accelerator($self->{'lasttext'});
     if ($text ne $self->{'lasttext'} || $self->{'lasttext'} =~ /_/) {
 	$self->{'lastquestion'}->set_markup_with_mnemonic($text);

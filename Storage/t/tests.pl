@@ -32,7 +32,7 @@ ok($hash->{'newtoken'} eq 'newval', "get_all returned the new hash value after s
 SKIP: 
 {
     skip "expectedly fails for the CGIParam generator", 1
-      if (ref($stobj) eq 'QWizard::Storage::CGIParam');
+      if (ref($stobj) eq 'xxxQWizard::Storage::CGIParam');
     @keys = keys(%$hash);
     ok($#keys == 0, "correct number of hash elements returned after set_all");
 }
@@ -45,7 +45,7 @@ ok(ref($hash) eq 'HASH', "get_all still returned hash after reset");
 SKIP: 
 {
     skip "expectedly fails for the CGIParam generator", 1
-      if (ref($stobj) eq 'QWizard::Storage::CGIParam');
+      if (ref($stobj) eq 'xxxQWizard::Storage::CGIParam');
     @keys = keys(%$hash);
     ok($#keys == -1, "hash returned from get_all is now empty");
 }
@@ -61,7 +61,7 @@ ok($stobj->get('myname') eq 'Wes', "retrieved new value after copy_from");
 SKIP: 
 {
     skip "expectedly fails for the CGIParam generator", 2
-      if (ref($stobj) eq 'QWizard::Storage::CGIParam');
+      if (ref($stobj) eq 'xxxQWizard::Storage::CGIParam');
     $stobj->set('othername','Yamar');
     my $str = $stobj->to_string;
     ok($str eq 'myname_-Wes_-othername_-Yamar' ||

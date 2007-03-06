@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '3.04';
+our $VERSION = '3.05';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -73,7 +73,8 @@ sub new {
 		       [['multi','values'],
 			['default'],
 			['single', 'submit'],
-			['single','refresh_on_change']]);
+			['single','refresh_on_change'],
+			['single','button_label']]);
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::HTML::do_multicheckbox,
 		       [['multi','default'],
@@ -154,7 +155,6 @@ sub init_cgi {
 sub init_screen {
     my ($self, $wiz, $title) = @_;
     $self->init_cgi();
-    $self->{'datastore'}->reset();
 
     return if ($self->{'started'} || $wiz->{'started'});
     $self->{'started'} = $wiz->{'started'} = $self->{'prefstore'}{'started'} =1;
@@ -453,7 +453,8 @@ sub do_button {
 }
 
 sub do_checkbox {
-    my ($self, $q, $wiz, $p, $vals, $def, $submit, $refresh_on_change) = @_;
+    my ($self, $q, $wiz, $p, $vals, $def, $submit, $refresh_on_change,
+	$button_label) = @_;
     $vals = [1, 0] if ($#$vals == -1);
     my $otherstuff;
     if ($def == $vals->[0]) {
@@ -468,7 +469,13 @@ sub do_checkbox {
     if ($refresh_on_change) {
 	$otherstuff .= " onclick=\"$redo_screen_js\"";
     }
+    if ($button_label) {
+	print "<span " . $self->do_css('qwbuttonlabel',$q->{'name'}) . ">";
+    }
     print "<input" . $self->do_css('qwcheckbox',$q->{'name'}) . " type=checkbox name=\"$q->{name}\"$otherstuff>";
+    if ($button_label) {
+	print "</span>\n";
+    }
 }
 
 sub do_multicheckbox {
@@ -697,12 +704,10 @@ sub qw_upload_file {
 	$fn =~ s/(.*)\///;
 	$fn =~ s/$self->{'tmpdir'}\/+//;
 	$fn =~ s/\.tmp$//;
-	print STDERR "*" x 20 . " -> $it -> $fn -> " . ref($fh) . "++\n";
 	$self->qwparam($it . "_qwf", $fn);
     } else {
 	$fn = $self->qwparam($it . "_qwf");
 	$fn =~ s/[^a-zA-Z0-9]//;
-	print STDERR "*" x 20 . " -> $it -> $fn \n";
     }
 
     $fn = $fn . ".tmp";
@@ -735,6 +740,7 @@ sub qw_upload_fh {
 	$fn =~ s/$self->{'tmpdir'}\/+//;
 	$fn =~ s/\.tmp$//;
 	$self->qwparam($it . "_qwf", $fn);
+	print STDERR "*" x 20 . " -> $it -> $fn -> " . ref($fh) . "++\n";
     } else {
 	$fn = $self->qwparam($it . "_qwf");
 	$fn =~ s/[^a-zA-Z0-9]//;

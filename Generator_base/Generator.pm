@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '3.04';
+our $VERSION = '3.05';
 use QWizard::Storage::Memory;
 require Exporter;
 use File::Temp qw(tempfile);
@@ -388,6 +388,20 @@ sub qw_upload_fh {
     $fh->open("<" . $self->qwparam($it));
 
     return $fh;
+}
+
+# this is overriden by the HTML handler to return a pointer to a temp file 
+sub qw_upload_file {
+    my ($self) = shift;
+    my ($it);
+    my $ret;
+    if (ref($self) =~ /QWizard/) {
+	$it = shift;
+    } else {
+	$it = $self;
+    }
+
+    return $self->qwparam($it);
 }
 
 ######################################################################

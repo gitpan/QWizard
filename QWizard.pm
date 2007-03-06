@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.04';
+our $VERSION = '3.05';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -796,6 +796,14 @@ sub confirm_or_run_actions {
 	}
     }
 
+    return 1;
+}
+
+sub is_done {
+    my $self = shift;
+    return 0 if (($self->{'state'} != $QWizard::states{'ACTING'} &&
+		  $self->{'state'} != $QWizard::states{'FINISHED'}) ||
+		 $self->{'state'} == $QWizard::states{'CANCELED'});
     return 1;
 }
 
@@ -2487,6 +2495,9 @@ A checkbox.  The I<values> clause should have only 2 values in it: one for
 its "on" value, and one for its "off" value (which defaults to 1 and 0,
 respectively).
 
+The I<button_label> clause can specify text to put right next to the
+checkbox itself.
+
 If a backend supports key accelerators (GTk2): Checkbox labels can be
 bound to Alt-key accelerators.  See QUESTION KEY-ACCELERATORS below
 for more information.
@@ -2577,13 +2588,17 @@ which will add column headers to the table.  E.g.:
 
 =item fileupload
 
-A dialog box for a user to upload a file into the application.  When a user
-submits a file the question I<name> can be used later to retrieve a read file
-handle on the file using the function I<qw_upload_file('NAME')>.
-I<qwparam('NAME')> will return the name of the file submitted, but because
-of the variability in how web-browsers submit file names along with the data,
-this field should generally not be used.  Instead, get access to the data
-through the I<qw_upload_fh>() function instead.
+A dialog box for a user to upload a file into the application.  When a
+user submits a file the question I<name> can be used later to retrieve
+a read file handle on the file using the function
+I<qw_upload_fh('NAME')>.  I<qwparam('NAME')> will return the original
+name of the file submitted, but because of the variability in how
+web-browsers submit file names along with the data, this field should
+generally not be used.  Instead, get access to the data through the
+I<qw_upload_fh>() function instead.  The second best alternative is to
+use the I<qw_upload_file('NAME')> function which returns a safe path
+to access under web-environments (which will be something like
+/tmp/qwHTMLXXXXXX...)
 
 =item filedownload
 
@@ -2911,6 +2926,10 @@ be short descriptions printed on screen when the wizard screen is displayed,
 and I<helptext> should be a full length description of help that will be
 displayed only when the user clicks on the help button.  I<helpdescr> is
 optional, and a button will be shown linking to I<helptext> regardless.
+
+=item indent => 1
+
+Slightly indents the question for some generators.
 
 =item submit => 1
 

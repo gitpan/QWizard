@@ -41,10 +41,9 @@ my @graph_opts =
    brush_size => 3
   );
 
-   
 
-use Data::Dumper;
-print Dumper($graphlotsdata);
+# use Data::Dumper;
+# print Dumper($graphlotsdata);
 
 my %primaries =
   (
