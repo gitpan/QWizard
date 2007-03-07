@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.05';
+my $VERSION = '3.06';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -1147,7 +1147,7 @@ sub do_radio {
 	if ($refresh_on_change) {
 	    $rb->signal_connect(clicked => \&goto_refresh);
 	}
-	$vb->pack_end($rb, FALSE, FALSE, 0);
+	$vb->pack_start($rb, FALSE, FALSE, 0);
 	$self->{'radiogroups'}{$name} = $rb->get_group();
     }
     $vb->{'rwidgets'} = \@ws;
@@ -1255,7 +1255,10 @@ sub do_menu {
 }
 
 sub do_entry {
-    my ($self, $q, $wiz, $p, $name, $def, $hide) = @_;
+    my ($self, $q, $wiz, $p, $name, $def, $hide,
+	$size, $maxsize, $submit, $refresh_on_change) = @_;
+    # XXX: refresh_on_change
+    # XXX: submit
 
     my $e = Gtk2::Entry->new();
     $e->set_text($def);
@@ -1263,6 +1266,13 @@ sub do_entry {
 	$_[0]->{'generator'}->qwparam($name, $_[0]->get_text());
     };
     $e->{'generator'} = $self;
+
+    if ($maxsize) {
+	$e->set_max_length($maxsize);
+    }
+    if ($size) {
+	$e->set_width_chars($size)
+    }
 
     #
     # Set up a value to use if the text shouldn't be echoed to the screen.

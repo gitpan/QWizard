@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.05';
+our $VERSION = '3.06';
 require Exporter;
 
 our @ISA = qw(Exporter);

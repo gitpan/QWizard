@@ -78,7 +78,7 @@ my %primaries =
      qw_checkbox('checkboxn',"checkbox:", 'on', 'off', default => 'off',
 		 refresh_on_change => 1),
      qw_checkbox('checkboxni',"indented checkbox:", 'on', 'off',
-		 default => 'off', indent => 1),
+		 default => 'off', indent => 1, button_label => 'extra text'),
      qw_checkbox('checkboxnc',"conditional checkbox:", 'on', 'off',
 		 default => 'off', indent => 1,
 		 doif => sub {qwparam('checkboxn') eq 'on'}),
