@@ -1,7 +1,8 @@
 package QWizard::Generator::Best;
 
 use strict;
-our $VERSION = '3.06';
+use Config;
+our $VERSION = '3.07';
 
 sub new {
     my $type = shift;
@@ -31,10 +32,16 @@ sub new {
 	}
     }
 
+    # checks to see if we're running on win32, macos or have the X11 DISLAY var
+    my $havedisplay = ($^O eq 'MSWin32' ||
+		    $Config{'ccflags'} =~ /-D_?WIN32_?/ ||
+		    $^O eq 'MacOS' ||
+		    defined($ENV{'DISPLAY'}));
+
     # console like
     my $have_gtk2 =
       eval { 
-	  if (!defined($ENV{'DISPLAY'})) {
+	  if (!$havedisplay) {
 	      return 0;
 	  }
 	  require QWizard::Generator::Gtk2;
@@ -45,7 +52,7 @@ sub new {
     # console like
     my $have_tk =
       eval { 
-	  if (!defined($ENV{'DISPLAY'})) {
+	  if (!$havedisplay) {
 	      return 0;
 	  }
 	  require QWizard::Generator::Tk;

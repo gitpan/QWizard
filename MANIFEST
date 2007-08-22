@@ -3,6 +3,7 @@ API/Makefile.PL
 examples/dynamic_redisplay.pl
 examples/guessing_game.pl
 examples/number_adding.pl
+examples/progress_update.pl
 examples/smile.fig
 examples/smile.png
 examples/widget-test-screen.pl
