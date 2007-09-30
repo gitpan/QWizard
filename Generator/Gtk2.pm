@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.07';
+my $VERSION = '3.08';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -141,7 +141,7 @@ sub create_qw_label {
     my $label = Gtk2::Label->new($text);
     $label->set_line_wrap(TRUE);
     $label->set_justify('GTK_JUSTIFY_LEFT');
-    $label->set_padding(($indent ? 30 : 10), 4);
+    $label->set_padding(($indent ? 30 : 10), 1);
     $label->set_alignment(0, 0);
 
     # set with an accelerator if we have a widget to bind to
@@ -391,7 +391,7 @@ sub init_screen {
 	# bottom row buts done in do_ok_cancel
 	# get added as children of the parentvbox to be full width on bottom
 
-	$self->add_qframe('Questions');
+	$self->add_qframe('');
     }
     $self->initialize_auto_accelerator();
 }
@@ -536,7 +536,7 @@ sub put_it {
 				  ($col == 1 ? [qw(fill)] : [qw(fill)]),
 #				  ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
 #				  ($col == 1 ? [qw(fill)] : [qw(fill expand)]),
-				  ($col == 1 ? 5 : 0),
+				  ($col == 1 ? 1 : 0),
 				  0);
     } elsif (ref($self->{'qtable'}) =~ /Gtk2::.Box/) {
 	# container is a box.  Packet it at the start.
@@ -621,6 +621,7 @@ sub do_question {
 	$but->signal_connect(clicked => \&do_helptext_button);
 	$but->{'helptext'} = $q->{'helptext'};
 	$but->{'generator'} = $self;
+	$but->set_border_width(0);
 	$hf->pack_start($but, FALSE, FALSE, 0);
     }
 
@@ -750,7 +751,7 @@ sub do_bar {
 
     $self->start_bar($wiz, undef);
     $self->do_a_table([$widgets], $self->{'qtable'}, -1, $wiz, $q, $p);
-    $self->end_bar($wiz, 'Questions');
+    $self->end_bar($wiz, '');
 }
 
 sub do_top_bar {
@@ -834,6 +835,7 @@ sub do_button {
     my $but = Gtk2::Button->new();
     my $butlab = 
       $self->create_qw_label($vals, FALSE, $icon, $but);
+    $butlab->set_padding(3, 0);
     $but->add($butlab);
 
     $but->signal_connect(clicked => \&goto_next);

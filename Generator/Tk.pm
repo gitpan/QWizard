@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.07';
+my $VERSION = '3.08';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -101,6 +101,9 @@ sub new {
 			['single','imagealt']]);
     $self->add_handler('fileupload',
 		       \&QWizard::Generator::Tk::do_fileupload,
+		       [['default','values']]);
+    $self->add_handler('filedownload',
+		       \&QWizard::Generator::Tk::do_filedownload,
 		       [['default','values']]);
 
     $self->add_handler('unknown',
@@ -341,8 +344,10 @@ sub do_question {
 	$helptext = $helptext->();
     }
 
+    $text = "    $text" if ($q->{'indent'});
     if ($helptext && !$self->qwpref('usehelpballons')) {
 	my $f = $top->Frame();
+	$helptext = "    $helptext" if ($q->{'indent'});
 	$f->Label(-text => $text, -anchor => 'nw')->pack(-anchor => 'w');
 	$f->Label(-text => $helptext, -anchor => 'nw',
 		  -font => 'Helvetica 12 italic')
@@ -530,10 +535,55 @@ sub do_menu {
     $self->set_default($q, $def);
 }
 
+sub select_openfile {
+    my ($self, $name, $widget) = @_;
+    my $file = $self->{'qtable'}->getOpenFile();
+    $self->qwparam($name, $file) if ($file ne '');
+}
+
 sub do_fileupload {
     my ($self, $q, $wiz, $p, $def) = @_;
 
-    $self->put_it($self->{'qtable'}->Entry(-textvariable => \$self->{'datastore'}{'vars'}{$q->{'name'}}, @{$self->get_extra_args($q, $wiz, $p)}));
+    my $openbutton = 
+      $self->{'qtable'}->Button(-text => 'Select File...',
+				-command => [\&select_openfile,
+					     $self, $q->{'name'}]);
+    $self->put_it($openbutton);
+    $self->set_default($q, $def);
+}
+
+sub select_savefile {
+    my ($self, $name, $data, $datafn, $qw, $q, $p) = @_;
+    my $file = $self->{'qtable'}->getSaveFile();
+    my $fileh = new IO::File;
+    $fileh->open('>' . $file);
+
+    # save the question data field
+    if ($data) {
+	print $fileh $data;
+    }
+
+    # call the datafn routine as well
+    if ($datafn && ref($datafn) eq 'CODE') {
+	$datafn->($fileh, $file, $qw, $q, $p);
+    }
+
+    # close the output file
+    $fileh->close();
+
+    $self->qwparam($name, $file) if ($file ne '');
+}
+
+sub do_filedownload {
+    my ($self, $q, $wiz, $p, $def) = @_;
+
+    my $openbutton = 
+      $self->{'qtable'}->Button(-text => 'Select File...',
+				-command => [\&select_savefile,
+					     $self, $q->{'name'},
+					     $q->{'data'}, $q->{'datafn'},
+					     $wiz, $q, $p]);
+    $self->put_it($openbutton);
     $self->set_default($q, $def);
 }
 
@@ -823,10 +873,8 @@ sub do_unknown {
     my ($self, $q, $wiz, $p) = @_;
     $self->{'currentq'}++;
     $self->{'qadd'}++;
-    use Data::Dumper;
-    $self->put_it($self->{'qtable'}->Label(-text => "Unknown question type $q->{type} not handled in primary '$p->{module_name}'.  It is highly likely this application will no longer function properly beyond this point.",
-					   -foreground => 'red'),
-		  undef, 1);
+    $self->put_it($self->{'qtable'}->Label(-text => "Unknown question type '$q->{type}' not handled in primary '$p->{module_name}'.  It is highly likely this application will no longer function properly beyond this point.",
+					   -foreground => 'red'));
 }
 
 

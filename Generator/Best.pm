@@ -2,7 +2,7 @@ package QWizard::Generator::Best;
 
 use strict;
 use Config;
-our $VERSION = '3.07';
+our $VERSION = '3.08';
 
 sub new {
     my $type = shift;

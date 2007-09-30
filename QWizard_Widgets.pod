@@ -100,7 +100,7 @@ generators make use of.
   |bar           |X   |X   |  |        |
   |button        |X   |X   |X |        |
   |checkbox      |X   |X   |X |X       |
-  |filedownload  |    |X   |  |        |
+  |filedownload  |    |X   |X |        |
   |fileupload    |X   |X   |X |X       |
   |graph         |X   |X   |X |        |
   |hidetext      |X   |X   |X |        |
@@ -154,6 +154,8 @@ These are the question types known to the QWizard::Generator::HTML generator cla
 =item submit => single  
 
 =item refresh_on_change => single  
+
+=item button_label => single  
 
 =back
 
@@ -384,6 +386,8 @@ These are the question types known to the QWizard::Generator::Gtk2 generator cla
 
 =item refresh_on_change => single  
 
+=item button_label => single  
+
 =back
 
 =item filedownload
@@ -603,6 +607,16 @@ These are the question types known to the QWizard::Generator::Tk generator class
 =item submit => single  
 
 =item refresh_on_change => single  
+
+=item button_label => single  
+
+=back
+
+=item filedownload
+
+=over
+
+=item values => default  
 
 =back
 
