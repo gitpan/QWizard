@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.08';
+our $VERSION = '3.09';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -1075,6 +1075,7 @@ sub ask_questions {
 	qwdebug("Processing Primary (more=$repeat): " . 
 		($p->{name} || $p->{title}) .
 		(($p->{'remap'}) ? " remap prefix: $p->{remap}" : "")); 
+	$self->{'state'} = $states{'ASKING'};
 	if ($p->{'take_over'}) {
 	    qwdebug("Passing control to primary, take_over hook found"); 
 	    $p->{'take_over'}($self, $p);
@@ -2148,9 +2149,9 @@ a value of 1 (using a hidden question type.)
 
 =item begin_section_hook => \&subroutine
 
-This function will be called just before a set of questions is displayed.  It
-can be used to perform such functions as printing preliminary information and
-initializing data.
+This function will be called just before each screen is displayed.  It
+can be used to perform such functions as printing preliminary
+information and initializing data.
 
 =item end_section_hook => \&subroutine
 
@@ -2329,15 +2330,25 @@ for more information on the I<add_todos>() function, but the above
 will add the 'primary1' screen to the list of screens to display for the user
 before the wizard is finished.
 
-A post_answers subroutine B<MUST> return the word "OK" for it to be
-successful.  Returning anything else will print the result, as if it
-is an error message, to the user.
+A post_answers subroutine should return the word "OK" for it to be
+successful (right now, this isn't checked, but it may be (again) in
+the future).  It may also return "REDISPLAY" which will cause the
+screen to displayed again.
 
 For HTML output, these will be run just before the next screen is
 printed after the user has submitted the answers back to the web
 server.  For window-based output (Gtk2, Tk, etc.) the results are
 similar and these subroutines are evaluated before the next window is
 drawn.
+
+=item check_value => sub { ... }
+
+=item check_value => [sub { ... }, arg1, arg2, ...]
+
+The primary may have a check_value clause assigned to it to do high
+level consistency checks.  Returning anything but "OK" will have the
+returned text displayed as an error to the user that they should fix
+before they're allowed to continue past the screen.
 
 =item actions => [ VALUES ]
 

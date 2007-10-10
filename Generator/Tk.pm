@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.08';
+my $VERSION = '3.09';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -38,14 +38,12 @@ sub new {
 			['single','submit'],
 			['single','refresh_on_change']]);
     # XXX: we need to do a real text box
-    $self->add_handler('textbox',\&QWizard::Generator::Tk::do_entry,
+    $self->add_handler('textbox',\&QWizard::Generator::Tk::do_textbox,
 		       [['single','name'],
 			['default'],
-			['forced','0'],
 			['single','size'],
-			['single','maxsize'],
-			['single','submit'],
-			['single','refresh_on_change']]);
+			['single','width'],
+			['single','height']]);
     $self->add_handler('hidetext',\&QWizard::Generator::Tk::do_entry,
 		       [['single','name'],
 			['default'],
@@ -57,8 +55,6 @@ sub new {
     $self->add_handler('checkbox',\&QWizard::Generator::Tk::do_checkbox,
 		       [['multi','values'],
 			['default'],
-			['single', 'submit'],
-			['single','refresh_on_change'],
 			['single','button_label']]);
     $self->add_handler('multi_checkbox',
 		       \&QWizard::Generator::Tk::do_multicheckbox,
@@ -122,6 +118,19 @@ sub goto_top {
 }
 
 sub goto_next {
+#     print STDERR "-----\n";
+#     for (my $i = 0; $i <= $#_; $i++) {
+# 	print STDERR "next $i: $_[$i]\n";
+#     }
+#     my @stuff = caller(1);
+#     print STDERR "$stuff[1] $stuff[2] -> $stuff[3]\n";
+#     my @stuff = caller(2);
+#     print STDERR "$stuff[1] $stuff[2] -> $stuff[3]\n";
+#     my @stuff = caller(3);
+#     print STDERR "$stuff[1] $stuff[2] -> $stuff[3]\n";
+#     my @stuff = caller(4);
+#     print STDERR "$stuff[1] $stuff[2] -> $stuff[3]\n";
+#     print STDERR "-----\n";
     shift if (ref($_[0]) ne 'QWizard::Generator::Tk');
     my ($self, $ignorefirst_or_varname, $refresh_on_change, $val) = @_;
     if ($ignorefirst_or_varname &&
@@ -134,11 +143,11 @@ sub goto_next {
 	}
     }
     if ($refresh_on_change) {
-	print STDERR "redo:!!!\n";
 	$self->qwparam('redo_screen',1);
     }
 
     $self->unmake_top();
+#    print STDERR "-----x\n";
 }
 
 sub goto_prev {
@@ -207,7 +216,7 @@ sub init_screen {
     if (!$self->{'window'}) {
 	$self->{'window'} = new MainWindow(
 					-title => $title,
-					   #-background => $self->{'bgcolor'} || $wiz->{'bgcolor'} || "#ffffff"
+					#-background => $self->{'bgcolor'} || $wiz->{'bgcolor'} || "#ffffff"
 				       );
 	$self->{'tktitle'} =
 	  $self->{'window'}->Label(-text => $title,
@@ -236,9 +245,12 @@ sub do_ok_cancel {
 	  $self->{'prevbut'}->pack(-side => 'left');
       }
       if (!$self->{'nextbut'}) {
+	  my $text =
+	    QWizard::Generator::remove_accelerator($nexttext  ||
+						   $wiz->{'next_text'} || 
+						   'Next');
 	  $self->{'nextbut'} = 
-	    $self->{'bot'}->Button(-text => ($nexttext  ||
-					     $wiz->{'next_text'} || 'Next'),
+	    $self->{'bot'}->Button(-text => $text,
 				   -command => [\&goto_next, 
 						$self]);
 	  $self->{'nextbut'}->pack(-side => 'left');
@@ -254,7 +266,9 @@ sub do_ok_cancel {
       }
       $self->{'bot'}->pack(-expand => 1, -fill => 'x');
   } else {
-      $self->{'nextbut'}->configure(-text => ($nexttext || 'Ok'));
+      my $text =
+	QWizard::Generator::remove_accelerator($nexttext || 'Ok');
+      $self->{'nextbut'}->configure(-text => $text);
   }
 }
 
@@ -402,6 +416,9 @@ sub get_extra_args {
 	    # menus do an initial call immediately after being created.
 	    # we use this hack to ignore the first call to the function.
 	    # (did I mention "sigh"?)
+#	    my $wehere = $self->qwparam('redo_screen');
+#	    print "setting ignoring first: $wehere\n";
+#	    $ignorefirst = 1 unless($wehere eq '') ;
 	    $ignorefirst = 1;
 	}
 	push @args, '-command', [\&goto_next, $self, \$ignorefirst,
@@ -434,10 +451,8 @@ sub do_button {
 
 sub do_checkbox {
     my ($self, $q, $wiz, $p, $vals, $def, $button_label) = @_;
-    my $x;
     $vals = [1, 0] if ($#$vals == -1);
-    my $chk = $self->{'qtable'}->Checkbutton(-textvariable => \$x,
-					     -anchor => 'w',
+    my $chk = $self->{'qtable'}->Checkbutton(-anchor => 'w',
   					     -onvalue => $vals->[0],
   					     -offvalue => $vals->[1],
 					     -text => $button_label,
@@ -525,19 +540,28 @@ sub do_menu {
 	    push @items, [ $labels->{$v} => $v ];
 	} else {
 	    push @items, $v;
+	    $labels->{$v} = $v;
+	}
+	if (defined($def) && $v eq $def) {
+	    # Tk::Optionmenu sucks badly when it comes to default; the
+	    # default value must be the first in the list because that
+	    # is what is shown.  ugh.  XXX: maybe use a Tk::BrowseEntry?
+	    unshift @items, (pop @items);
 	}
     }
 
+    $self->set_default($q, $def);
     $self->put_it($self->{'qtable'}->Optionmenu(-options => \@items,
 						-variable => \$self->{'datastore'}{'vars'}{$name},
 						-relief => 'raised',
 						@{$self->get_extra_args($q, $wiz, $p)}));
-    $self->set_default($q, $def);
 }
 
 sub select_openfile {
     my ($self, $name, $widget) = @_;
+
     my $file = $self->{'qtable'}->getOpenFile();
+    $widget->configure(-text => 'Select File: ' . $file);
     $self->qwparam($name, $file) if ($file ne '');
 }
 
@@ -545,16 +569,17 @@ sub do_fileupload {
     my ($self, $q, $wiz, $p, $def) = @_;
 
     my $openbutton = 
-      $self->{'qtable'}->Button(-text => 'Select File...',
-				-command => [\&select_openfile,
-					     $self, $q->{'name'}]);
+      $self->{'qtable'}->Button(-text => 'Select File...');
+    $openbutton->configure(-command => [\&select_openfile,
+					$self, $q->{'name'}, $openbutton]);
     $self->put_it($openbutton);
     $self->set_default($q, $def);
 }
 
 sub select_savefile {
-    my ($self, $name, $data, $datafn, $qw, $q, $p) = @_;
+    my ($self, $name, $data, $datafn, $qw, $q, $p, $widget) = @_;
     my $file = $self->{'qtable'}->getSaveFile();
+    $widget->configure(-text => 'Select File: ' . $file);
     my $fileh = new IO::File;
     $fileh->open('>' . $file);
 
@@ -578,11 +603,11 @@ sub do_filedownload {
     my ($self, $q, $wiz, $p, $def) = @_;
 
     my $openbutton = 
-      $self->{'qtable'}->Button(-text => 'Select File...',
-				-command => [\&select_savefile,
-					     $self, $q->{'name'},
-					     $q->{'data'}, $q->{'datafn'},
-					     $wiz, $q, $p]);
+      $self->{'qtable'}->Button(-text => 'Select File...');
+    $openbutton->configure(-command => [\&select_savefile,
+					$self, $q->{'name'},
+					$q->{'data'}, $q->{'datafn'},
+					$wiz, $q, $p, $openbutton]);
     $self->put_it($openbutton);
     $self->set_default($q, $def);
 }
@@ -603,19 +628,23 @@ sub do_entry {
     $self->set_default($q, $def);
 }
 
-# sub do_textbox {
-#     my ($self, $q, $wiz, $p, $vals, $def) = @_;
-#     my $tb = $self->{'qtable'}->Text(-width => $q->{'size'} || $q->{'width'}
-# 				     || 80,
-# 				     -height => $q->{'height'} || 4,
-# 				     -wrap => 'none',
-# 				     -relief => 'flat',
-# #				     -data => \$self->{'datastore'}{'vars'}{$q->{'name'}},
-# 				     @{$self->get_extra_args($q, $wiz, $p)});
-#     $tb->insert('end',$def) if ($def);
-#     $self->set_default($q, $def);
-#     $self->put_it($tb);
-# }
+sub do_textbox {
+    my ($self, $q, $wiz, $p, $vals, $def) = @_;
+    my ($self, $q, $wiz, $p, $name, $def, $size, $width, $height) = @_;
+    my $tb =
+      $self->{'qtable'}->Text(-width => ($size || $width || 80),
+			      -height => ($height || 8),
+			      -wrap => 'none',
+#			      -relief => 'flat',
+			      @{$self->get_extra_args($q, $wiz, $p)});
+
+    $tb->bind('<Any-Leave>',
+	      sub { $self->{'datastore'}{'vars'}{$name} =
+		      $_[0]->get('0.0','end'); });
+    $tb->insert('end',$def || "",'geoqotext');
+    $self->set_default($q, $def);
+    $self->put_it($tb);
+}
 
 sub do_separator {
     my ($self, $q, $wiz, $p, $text) = @_;

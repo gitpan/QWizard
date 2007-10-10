@@ -4,7 +4,7 @@ use strict;
 use QWizard::Storage::Base;
 our @ISA = qw(QWizard::Storage::Base);
 
-our $VERSION = '3.08';
+our $VERSION = '3.09';
 use CGI;
 
 our %cached_params = ();

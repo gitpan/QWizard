@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.08';
+my $VERSION = '3.09';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -143,6 +143,7 @@ sub create_qw_label {
     $label->set_justify('GTK_JUSTIFY_LEFT');
     $label->set_padding(($indent ? 30 : 10), 1);
     $label->set_alignment(0, 0);
+    $label->set_selectable(TRUE);
 
     # set with an accelerator if we have a widget to bind to
     if ($activatewidget) {
@@ -239,11 +240,13 @@ sub goto_refresh {
 # be a widget.
 sub goto_next {
     my $self = shift;
+    my $generator = $self->{'generator'};
     if ($self->{'qbuttonname'}) {
 	$self->{'generator'}->qwparam($self->{'qbuttonname'},
 				      $self->{'qbuttonval'});
     }
-    $self->{'generator'}->remove_all_table_entries();
+    $generator->remove_all_table_entries();
+    $generator->{'window'}->window->set_cursor($generator->{'pausecursor'});
     Gtk2->main_quit();
 }
 
@@ -271,6 +274,8 @@ sub our_mainloop {
     } else {
 	$self->{'refreshbut'}->hide();
     }
+    $self->{'window'}->window->set_cursor($self->{'normalcursor'});
+    $self->{'mainscrolledwindow'}->get_vscrollbar()->set_value(0);
     Gtk2->main;
 }
 
@@ -319,6 +324,10 @@ sub init_screen {
 	$self->{'window'}->signal_connect(delete_event => \&our_exit);
 #	$self->{'window'}->signal_connect(destroy => \&our_exit);
 	
+	# create cursors
+	$self->{'pausecursor'} = Gtk2::Gdk::Cursor->new('watch');
+	$self->{'normalcursor'} = Gtk2::Gdk::Cursor->new('arrow');
+
 	## parentvbox: the master vbox
 	# contains the topbar, the main widgets (mainhbox), and the buttons
 	$self->{'parentvbox'} = Gtk2::VBox->new(FALSE, 6);
@@ -587,7 +596,7 @@ sub do_error {
     # XXX: make font red
     my $lb = $self->create_qw_label($err);
     $lb->set_markup("<span weight=\"bold\" foreground=\"red\">$err</span>");
-    $self->put_it($lb, undef, 1);
+    $self->put_it($lb, undef, 2);
 }
 
 sub do_question {
@@ -699,7 +708,7 @@ sub start_questions {
     $self->{'gtk2title'}->set_markup("<span size=\"x-large\" underline=\"single\">$title</span>");
 #    $self->{'gtk2title'}->set_pattern("_" x length($title));
     if ($intro) {
-	$self->{'gtk2intro'}->set_label($intro);
+	$self->{'gtk2intro'}->set_text($intro);
 	$self->{'nointro'} = 0;
     } else {
 	# GRR...  can't hide here since a show_all comes later.
