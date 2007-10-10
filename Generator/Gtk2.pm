@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.09';
+my $VERSION = '3.10';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;

@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.09';
+my $VERSION = '3.10';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -509,16 +509,16 @@ sub do_label {
 
 sub do_paragraph {
     my ($self, $q, $wiz, $p, $vals, $preformatted, $width) = @_;
-    my $w = $width || 40;
+    my $w = $width || 80;
     foreach my $i (@$vals) {
 	my $t;
 	if ($preformatted) {
 	    my $c = $i;
 	    $c =~ s/[^\n]//g;  # XXX: must be a better and more efficient way
-	    $t = $self->{'qtable'}->Text(-width => $w,
-					 -height => length($c) || 24,
-					 -wrap => 'none',
-					 -relief => 'flat');
+	    $t = $self->{'qtable'}->Scrolled('Text', -width => $w, 
+					     -height => length($c) || 24,
+					     -wrap => 'none',
+					     -relief => 'flat');
 	} else {
 	    $t = $self->{'qtable'}->Text(-width => $w,
 					 -height => 

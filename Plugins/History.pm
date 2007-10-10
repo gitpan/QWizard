@@ -1,6 +1,6 @@
 package QWizard::Plugins::History;
 
-our $VERSION = '3.09';
+our $VERSION = '3.10';
 require Exporter;
 
 use strict;
