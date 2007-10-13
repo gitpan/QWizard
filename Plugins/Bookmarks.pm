@@ -1,6 +1,6 @@
 package QWizard::Plugins::Bookmarks;
 
-our $VERSION = '3.10';
+our $VERSION = '3.11';
 require Exporter;
 
 use strict;

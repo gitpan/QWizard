@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.10';
+our $VERSION = '3.11';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -1333,13 +1333,6 @@ sub ask_question {
 	qwdebug("Processing Question: " . 
 		sprintf("%-10s %s", ($q->{type} || "text"),
 			"$q->{name}")); 
-	if ($q->{'doif'} && ! $q->{'doif'}->($q, $self, $p)) {
-	    qwdebug("Question skipped");
-	    $self->{'qcount'}--;
-	    $self->{'allqcount'}++;
-	    return;
-	}
-
 	# determine the default value.  this is either pulled from the
 	# question default clause or from the last value entered from
 	# the user if an error occurred and we're redisplaying the
@@ -1354,6 +1347,17 @@ sub ask_question {
 		print STDERR "*** QWizard: Warning redefining value from question named $q->{name} (value was: " . qwparam($q->{'name'}) . ").  This may or may not have been intentional.  Add the 'override' flag to the second question, or rename the parent's question, to turn off this warning in the future\n";
 	    }
 	    $def = $self->get_value($q->{default}, undef, [$p, $q]);
+	}
+
+	if ($q->{'doif'} && ! $q->{'doif'}->($q, $self, $p)) {
+	    qwdebug("Question skipped");
+	    $self->{'qcount'}--;
+	    $self->{'allqcount'}++;
+	    if ($self->qwparam($q->{'name'}) eq '' &&
+		$def ne '') {
+		$self->qwparam($q->{'name'}, $def);
+	    }
+	    return;
 	}
 
 	# display the error

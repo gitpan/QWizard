@@ -6,7 +6,7 @@ our @ISA = qw(QWizard::Storage::Base);
 
 our %cached_cookies = ();
 
-our $VERSION = '3.10';
+our $VERSION = '3.11';
 use CGI qw(escapeHTML);
 
 sub new {

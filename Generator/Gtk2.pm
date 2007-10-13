@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.10';
+my $VERSION = '3.11';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -1350,12 +1350,12 @@ sub do_a_table_widget {
     $self->{'qtable'} = $oldqt;
     $self->{'currentq'} = $oldq;
     if ($oldc) {
-	$self->{'currentcol'} = $oldc 
+	$self->{'currentcol'} = $oldc;
     } else {
 	delete $self->{'currentcol'};
     }
     if ($oldrow) {
-	$self->{'currentrow'} = $oldrow 
+	$self->{'currentrow'} = $oldrow;
     } else {
 	delete $self->{'currentrow'};
     }
@@ -1383,7 +1383,8 @@ sub do_a_table {
 		push @{$parentt->{'qwsubwidgets'}}, $newt;
 	    } elsif (ref($column) eq "HASH") {
 		$self->do_a_table_widget($wiz, $p, $parentt, $column,
-					 $col++, $rowc);
+					 $col, $rowc);
+		$col++;
 	    } else {
 		$parentt->attach_defaults($self->create_qw_label($column),
 					  $col, $col + 1, $rowc, $rowc+1);

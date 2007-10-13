@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.10';
+my $VERSION = '3.11';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -176,6 +176,7 @@ sub unmake_top {
 sub make_top {
     my $self = shift;
     $self->unmake_top();
+
     if (!$self->{'top'}) {
 	$self->{'top'} = $self->{'window'}->Frame();
 	$self->{'top'}->pack(-expand => 1, -fill => 'both');
@@ -184,22 +185,26 @@ sub make_top {
 	    $self->{'balloon'} = $self->{'top'}->Balloon();
 	}
     }
+
+    my $px = $self->{'top'}->width();
+    my $py = $self->{'top'}->height();
+    $px = $self->{'qwidth'} || 600 if ($px < 600);
+    $py = $self->{'qheight'} || 500 if ($py < 500);
+
     if (!$self->{'qtitle'}) {
 	$self->{'qtitle'} = $self->{'top'}->Label();
 	$self->{'qtitle'}->pack(-side => 'top');
     }
     if (!$self->{'qintro'}) {
-	$self->{'qintro'} = $self->{'top'}->Text(-width => 80, 
-#						 -height => 4,
-						 -wrap => 'word',
-						 -relief => 'flat');
+	$self->{'qintro'} = $self->{'top'}->Scrolled('Text',
+						     -scrollbars => 'w',
+						     -width => $px, 
+						     -height => 200,
+						     -wrap => 'word',
+						     -relief => 'flat');
 	$self->{'qintro'}->pack(-side => 'top', -expand => 1, -fill => 'both');
     }
     if (!$self->{'qpane'}) {
-	my $px = $self->{'top'}->width();
-	my $py = $self->{'top'}->height();
-	$px = $self->{'qwidth'} || 600 if ($px < 600);
-	$py = $self->{'qheight'} || 500 if ($py < 500);
 	$self->{'qpane'} = $self->{'top'}->Scrolled('Pane', -width => $px, 
 						    -height => $py,
 						    -sticky => 'nsew');
@@ -209,6 +214,10 @@ sub make_top {
 						-columns => 10,
 						-scrollbars => '');
     $self->{'qtable'}->pack(-expand => 1, -fill => 'both');
+
+    # we make some decisions based on which table we're currently
+    # pointing at; thus remember the original.
+    $self->{'origqtable'} = $self->{'qtable'};
 }
 
 sub init_screen {
@@ -349,6 +358,7 @@ sub do_question {
     my $top = $self->{'qtable'};
 
     $self->{'currentq'} = $qcount + $self->{'qadd'};
+    return if (!$text && $self->{'qtable'} != $self->{'origqtable'});
 
     #
     # Get the actual help text, in case this is a subroutine.
@@ -361,11 +371,17 @@ sub do_question {
     $text = "    $text" if ($q->{'indent'});
     if ($helptext && !$self->qwpref('usehelpballons')) {
 	my $f = $top->Frame();
-	$helptext = "    $helptext" if ($q->{'indent'});
 	$f->Label(-text => $text, -anchor => 'nw')->pack(-anchor => 'w');
-	$f->Label(-text => $helptext, -anchor => 'nw',
-		  -font => 'Helvetica 12 italic')
+	$helptext = "    $helptext" if ($q->{'indent'});
+	$helptext = " $helptext";
+	my $height = int(length($helptext)/40)+1;
+	my $t = $f->Text(-width => 40,
+			 -height => $height,
+			 -relief => 'flat',
+			 -wrap => 'word',
+			 -font => 'Helvetica 12 italic')
 	  ->pack(-anchor => 'w');
+	$t->insert('end', $helptext);
 	$self->put_it($f, undef, 1);
     } else {
 	my $l = $top->Label(-text => $text, -anchor => 'nw');
@@ -385,7 +401,7 @@ sub start_questions {
 	
     $self->{'qintro'}->delete('1.0','end');
     if ($intro) {
-	$self->{'qintro'}->configure(-height => length($intro)/80 + 1);
+	$self->{'qintro'}->configure(-height => (length($intro)/80 + 1));
 	$self->{'qintro'}->insert('end',$intro);
     } else {
 	$self->{'qintro'}->configure(-height => 0);
@@ -686,7 +702,8 @@ sub do_a_table {
 		$self->{'currentrow'} = $rowc;
 
 		my $oldc = $self->{'currentcol'};
-		$self->{'currentcol'} = $col++;
+		$self->{'currentcol'} = $col;
+		$col++;
 		
 		my $subname = $wiz->ask_question($p, $column);
 		push @{$wiz->{'passvars'}}, $subname if ($subname);
@@ -694,12 +711,12 @@ sub do_a_table {
 		$self->{'qtable'} = $oldqt;
 		$self->{'currentq'} = $oldq;
 		if ($oldc) {
-		    $self->{'currentcol'} = $oldc 
+		    $self->{'currentcol'} = $oldc;
 		} else {
 		    delete $self->{'currentcol'};
 		}
 		if ($oldrow) {
-		    $self->{'currentrow'} = $oldrow 
+		    $self->{'currentrow'} = $oldrow;
 		} else {
 		    delete $self->{'currentrow'};
 		}
