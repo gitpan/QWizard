@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.11';
+my $VERSION = '3.12';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -232,6 +232,7 @@ sub remove_all_table_entries {
 # be a widget.
 sub goto_refresh {
     my $self = shift;
+    $self->{'generator'}{'doingrefresh'} = 1;
     $self->{'generator'}->qwparam('redo_screen',1);
     goto_next($self, @_);
 }
@@ -264,7 +265,7 @@ sub our_mainloop {
     $self->{'progwindow'}->hide if ($self->{'progwindow'});
     $self->{'window'}->show_all;
     if ($self->{'nointro'}) {
-	$self->{'introframe'}->hide;
+	$self->{'introsw'}->hide;
 	$self->{'gtk2intro'}->hide;
     }
     if ($self->qwparam('allow_refresh') ||
@@ -275,7 +276,9 @@ sub our_mainloop {
 	$self->{'refreshbut'}->hide();
     }
     $self->{'window'}->window->set_cursor($self->{'normalcursor'});
-    $self->{'mainscrolledwindow'}->get_vscrollbar()->set_value(0);
+    $self->{'mainscrolledwindow'}->get_vscrollbar()->set_value(0)
+      if (!$self->{'doingrefresh'});
+    $self->{'doingrefresh'} = 0;
     Gtk2->main;
 }
 
@@ -389,13 +392,17 @@ sub init_screen {
 	$self->{'centervbox'}->pack_start($self->{'mainscrolledwindow'},
 					  TRUE, TRUE, 0);
 
-	$self->{'introframe'} = Gtk2::Frame->new();
+	# XXX: the label ends up being too tall; not sure why
+	# (it's not the frame; removing that it's still too big)
+	($self->{'introvbox'}, $self->{'introsw'}) =
+	  $self->get_scrolled_vbox();
+
+	# the introduction
 	$self->{'gtk2intro'} = $self->create_qw_label('');
 	$self->{'gtk2intro'}->set_max_width_chars(80);
 	$self->{'gtk2intro'}->set_line_wrap(TRUE);
-	# the introduction
-	$self->{'introframe'}->add($self->{'gtk2intro'});
-	$self->{'vbox'}->pack_start($self->{'introframe'}, FALSE, FALSE, 0);
+	$self->{'introvbox'}->pack_start($self->{'gtk2intro'}, FALSE, FALSE, 0);
+	$self->{'vbox'}->pack_start($self->{'introsw'}, FALSE, FALSE, 0);
 
 	# bottom row buts done in do_ok_cancel
 	# get added as children of the parentvbox to be full width on bottom

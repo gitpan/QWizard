@@ -604,10 +604,6 @@ These are the question types known to the QWizard::Generator::Tk generator class
 
 =item default => single  
 
-=item submit => single  
-
-=item refresh_on_change => single  
-
 =item button_label => single  
 
 =back
@@ -760,11 +756,9 @@ These are the question types known to the QWizard::Generator::Tk generator class
 
 =item size => single  
 
-=item maxsize => single  
+=item width => single  
 
-=item submit => single  
-
-=item refresh_on_change => single  
+=item height => single  
 
 =back
 

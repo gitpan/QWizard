@@ -5,7 +5,7 @@ use strict;
 
 our @ISA = qw(QWizard::Storage::Memory);
 
-our $VERSION = '3.11';
+our $VERSION = '3.12';
 
 sub new {
     my $class = shift;

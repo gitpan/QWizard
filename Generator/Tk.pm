@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.11';
+my $VERSION = '3.12';
 use Tk;
 use Tk::Table;
 use Tk::Pane;

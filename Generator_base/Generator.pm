@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '3.11';
+our $VERSION = '3.12';
 use QWizard::Storage::Memory;
 require Exporter;
 use File::Temp qw(tempfile);
