@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '3.12';
+our $VERSION = '3.13';
 use QWizard::Storage::Memory;
 require Exporter;
 use File::Temp qw(tempfile);
@@ -137,8 +137,11 @@ sub do_graph_data {
 
     if ($have_chart_graph && !$q->{'use_gd_graph'}) {
 
+	my $charttype = "Lines";
+	$charttype = $gopts{'-charttype'} if (exists($gopts{'-charttype'}));
+
 	# create the graph
-	my $gph = Chart::Lines->new($w, $h);
+	my $gph = eval("require Chart::$charttype;  return Chart::" . $charttype . '->new($w, $h);');
 
 	# change various plotting conventions from GD::Graph to Chart::Lines
 	my %converts =

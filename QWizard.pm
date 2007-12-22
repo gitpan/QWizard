@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.12';
+our $VERSION = '3.13';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -3297,6 +3297,15 @@ I<qw_optional_hex>(), I<qw_check_hex_and_length>()
 =head1 AUTHOR
 
 Wes Hardaker, hardaker@users.sourceforge.net
+
+=head1 COPYRIGHT and LICENSE
+
+Copyright (c) 2003-2007, SPARTA, Inc.  All rights reserved
+
+Copyright (c) 2006-2007, Wes Hardaker. All rights reserved
+
+QWizard is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.
 
 =head1 SEE ALSO
 

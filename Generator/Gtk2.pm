@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.12';
+my $VERSION = '3.13';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -957,8 +957,12 @@ sub create_filedownload_screen {
 
 			       # open the file to save the data in
 			       my $filename = $but->{'pwidget'}->get_filename();
+			       # save the value
+			       $_[0]->{'generator'}->qwparam($_[0]->{'qwname'},
+							     $filename);
 			       my $fileh = new IO::File;
 			       $fileh->open(">" . $filename);
+
 
 			       # save the question data field
 			       if ($but->{'data'}) {
