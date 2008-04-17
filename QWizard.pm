@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.13';
+our $VERSION = '3.14';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -1485,7 +1485,7 @@ sub qwparams {
 
     my @results;
     foreach my $name (@_) {
-	push @results, $generator->qwparam($name);
+	push @results, $generator->qwparam($name) || '';
     }
     return @results;
 }

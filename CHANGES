@@ -1,0 +1,9 @@
+3.14:
+  HTML Generator:
+    - defaults to using minimal included css
+    - the "nocss" option can turn this off
+    - file downloads supported, though it currently creates the file
+      at screen creation time and thus can't be affected by parameter
+      changes on the current screen, unlike other backends...
+
+  - Misc other bug fixes

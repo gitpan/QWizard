@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.13';
+my $VERSION = '3.14';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -437,9 +437,11 @@ sub set_progress {
 	return if (!$self->{'progress'} || !$self->{'progress'});
 	$self->{'progwindow'}->add($self->{'progress'});
 	$self->{'progwindow'}->set_title("Progress");
-	my ($x, $y) = $self->{'window'}->get_position();
-	my ($w, $h) = $self->{'window'}->get_size();
-	$self->{'progwindow'}->move($x + int($w/2), $y + int($h/2));
+	if ($self->{'window'}) {
+	    my ($x, $y) = $self->{'window'}->get_position();
+	    my ($w, $h) = $self->{'window'}->get_size();
+	    $self->{'progwindow'}->move($x + int($w/2), $y + int($h/2));
+	}
 	$self->{'progwindow'}->show_all;
     }
     $self->{'progress'}->set_text($text || (int(100*$progress) . "%"));

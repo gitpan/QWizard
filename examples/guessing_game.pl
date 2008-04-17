@@ -92,13 +92,12 @@ my %primaries =
 	helptext => 'The computer is thinking of a number.  Please try and guess the number.  It will tell you when you are high and low and keep track of how many attempts have been made to guess it.',
 	default => sub { qwparam('guess') || '' },
 	check_value => sub {
-	    # update the tries counter
-	    qwparam('tries',qwparam('tries') + 1);
-
 	    if (qwparam('guess') > qwparam('answer')) {
+	        qwparam('tries',qwparam('tries') + 1);
 		return "Your guess, " . qwparam('guess') . ", was too high!"
 	    }
-	    if (qwparam('guess') < qwparam('answer')) {
+	    elsif (qwparam('guess') < qwparam('answer')) {
+	        qwparam('tries',qwparam('tries') + 1);
 		return "Your guess, " . qwparam('guess') . ",  was too low!"
 	    }
 	}

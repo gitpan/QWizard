@@ -1,5 +1,7 @@
 API/API.pm
 API/Makefile.PL
+CHANGES
+dist/makerelease.xml
 examples/dynamic_redisplay.pl
 examples/guessing_game.pl
 examples/number_adding.pl
@@ -42,3 +44,5 @@ Storage/t/file.t
 Storage/t/memory.t
 Storage/t/read-file.t
 Storage/t/tests.pl
+windows/blibupdate
+windows/QWizard.ppd

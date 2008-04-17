@@ -12,7 +12,7 @@ if(isprint("abc\000abc") || isprint("abc\001abc") || !isprint("barra"))
 
 
 use strict;
-our $VERSION = '3.13';
+our $VERSION = '3.14';
 use CGI qw(escapeHTML);
 use CGI::Cookie;
 require Exporter;
@@ -22,11 +22,101 @@ use QWizard::Storage::CGICookie;
 use IO::File;
 use POSIX qw(isprint);
 
+my $defaultcss = "
+body {
+  font-family:verdana, arial, helvetica, sans-serif;
+  background-color: white;
+}
+
+span.centersection {
+  width: 100%;
+}
+
+h1 {
+ /* top and bottom borders: 1px; left and right borders: 0px*/
+  border-width:1px;
+  border-color:black;
+  border-style:solid;
+  background-color: #9df;
+  padding-left: 5px;
+}
+
+input,.qwcheckbox,select,.qwradio,.qwtext {
+  background-color: #cff;
+}
+
+.qwnext {
+  margin-top: 15px;
+  background-color: #9df;
+  float: left;
+}
+
+.qwcancel {
+  margin-top: 15px;
+  background-color: #9df;
+  float: right;
+}
+
+p {
+  margin-left: 25px;
+}
+
+h2 {
+ /* top and bottom borders: 1px; left and right borders: 0px*/
+  border-width:1px;
+  border-color:black;
+  border-style:solid;
+  background-color: #9df;
+  margin-left: 10px;
+  padding-left: 5px;
+}
+
+#qwlabelpagenum {
+  font-weight: bold;
+}
+
+#qwlabelpageauthor {
+  font-weight: bold;
+}
+
+#qwparagraphstory {
+  font-family:verdana, arial, helvetica, sans-serif;
+}
+
+#story {
+ /* top and bottom borders: 1px; left and right borders: 0px*/
+  border-width:1px 0px;
+  border-color:black;
+  border-style:solid;
+  background-color: #93d5ea;
+}
+
+#qwtablewhatnext {
+  border-color:black;
+  border-style:solid;
+  background-color: #93d5ea;
+  width: 100%;
+}
+
+#qwlabel {
+  align: left;
+}
+
+#qwtablerowwhatnext {
+  align: left;
+  border-width:10px 0px;
+}
+
+#qwtablewidget {
+  align: left;
+  border-width:10px 0px;
+}
+
+";
+
 @QWizard::Generator::HTML::ISA = qw(Exporter QWizard::Generator);
 
 our %defaults = (
-		 headerbgcolor => '#d18458',
-		 bgcolor => '#ffa26c',
 		 form_name => 'qwform',
 		 tmpdir => '/tmp',
 		 one_pass => 1,
@@ -133,6 +223,15 @@ sub new {
     $self->add_handler('fileupload',
 		       \&QWizard::Generator::HTML::do_fileupload,
 		       [['default','values']]);
+    $self->add_handler('filedownload',
+		       \&QWizard::Generator::HTML::do_filedownload,
+		       [['single','name'],
+			['default'],
+			['single','data'],
+			['noexpand','datafn'],
+			['single','extension'],
+			['single','linktext']
+		       ]);
 
     $self->add_handler('unknown',
 		       \&QWizard::Generator::HTML::do_unknown,
@@ -162,6 +261,8 @@ sub init_screen {
     my @otherargs;
     if ($self->{'cssurl'}) {
 	push @otherargs, 'style', { src => $self->{'cssurl'}};
+    } elsif (!$self->{'nocss'}) {
+	push @otherargs, 'style', { code => $defaultcss };
     }
     print "Content-type: text/html\n\n" if (!$self->{'noheaders'} &&
 					    !$wiz->{'noheaders'});
@@ -184,14 +285,14 @@ sub init_screen {
 sub wait_for {
   my ($self, $wiz, $next, $p) = @_;
   print $self->{'cgi'}->end_form();
-  print "</tr>\n" if (!exists($self->{'cssurl'}));
+  print "</tr>\n" if (exists($self->{'nocss'}));
   $self->close_div_or_table(); # end for <div class="qwizard"> in start_primaries
   return 1;
 }
 
 sub do_css {
     my ($self, $class, $name, $noidstr) = @_;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	my $idstr = '';
 	$idstr = $class if (!$noidstr);
 	return " class=\"$class\" id=\"$idstr$name\" ";
@@ -201,7 +302,7 @@ sub do_css {
 
 sub open_div_or_table {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "<div class=\"" . $_[0] . "\">\n";
     } else {
 	print "<table $_[1]>\n";
@@ -210,7 +311,7 @@ sub open_div_or_table {
 
 sub close_div_or_table {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "</div>\n";
     } else {
 	print "</table>\n";
@@ -219,7 +320,7 @@ sub close_div_or_table {
 
 sub open_div_or_tr {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "<div class=\"" . $_[0] . "\">\n";
     } else {
 	print "<tr $_[1]>\n";
@@ -228,7 +329,7 @@ sub open_div_or_tr {
 
 sub open_span_or_td {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "<span class=\"" . $_[0] . "\">\n";
     } else {
 	print "<td valign=\"top\" $_[1]>\n";
@@ -237,7 +338,7 @@ sub open_span_or_td {
 
 sub close_span_or_td {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "</span>\n";
     } else {
 	print "</td>\n";
@@ -246,7 +347,7 @@ sub close_span_or_td {
 
 sub close_div_or_tr {
     my $self = shift;
-    if (exists($self->{'cssurl'})) {
+    if (!exists($self->{'nocss'})) {
 	print "</div>\n";
     } else {
 	print "</tr>\n";
@@ -370,9 +471,9 @@ sub do_bar {
 sub do_top_bar {
     my ($self, $q, $wiz, $p, $widgets) = @_;
 
-    print "<tr><td colspan=\"10\">" if (!exists($self->{'cssurl'}));
+    print "<tr><td colspan=\"10\">" if (exists($self->{'nocss'}));
     $self->do_a_table([$widgets], 0, $wiz, $q, $p, 'topbar', 'topbar','topbar');
-    print "</td></tr>\n" if (!exists($self->{'cssurl'}));
+    print "</td></tr>\n" if (exists($self->{'nocss'}));
 }
 
 sub start_center_section {
@@ -397,7 +498,7 @@ sub start_primaries {
     my ($self) = @_;
     # this is closed in wait_for()
     $self->open_div_or_table("qwizard");
-    print "<tr>\n" if (!exists($self->{'cssurl'}));
+    print "<tr>\n" if (exists($self->{'nocss'}));
 }
 
 sub do_side {
@@ -474,7 +575,7 @@ sub do_checkbox {
     }
     print "<input" . $self->do_css('qwcheckbox',$q->{'name'}) . " type=checkbox name=\"$q->{name}\"$otherstuff>";
     if ($button_label) {
-	print "</span>\n";
+	print " $button_label</span>\n";
     }
 }
 
@@ -854,7 +955,7 @@ sub do_table {
     my ($self, $q, $wiz, $p, $table, $headers) = @_;
     my $color = $self->{'tablebgcolor'} || $self->{'bgcolor'};
     print "<table" . $self->do_css('qwtable',$q->{'name'}) .
-      (exists($self->{'cssurl'}) ? "" : "bgcolor=$color border=1>") . 
+      (!exists($self->{'nocss'}) ? "" : "bgcolor=$color border=1>") . 
        "\n";
 
     if ($headers) {
@@ -961,6 +1062,35 @@ sub do_image {
 	print "<img" . $self->do_css('qwimage',$q->{'name'}) .
 	  " $imagesrc $altmsg $hmsg $wmsg border=1>\n";
 }
+
+sub do_filedownload {
+    my ($self, $q, $wiz, $p, $name, $def, $data, $datafn, $extension,
+	$linktext) = @_;
+
+    # We simply always generate and save the file and make a link to it
+    # XXX: this is not efficient and techinically should be generated on demand.
+
+    my ($fh, $outputfile) = $self->create_temp_fh($extension || '.bin');
+    $outputfile =~ s/.*\///;
+
+    # print the passed in data
+    print $fh $data if ($data);
+
+    # if we have code to use for directly printing data, call it
+    if ($datafn && ref($datafn) eq 'CODE') {
+	# passed a generator function; call it
+	$datafn->($fh, undef, $wiz, $p, $q, $outputfile);
+    }
+
+    # close it out
+    $fh->close();
+
+    # print the resulting html out
+    print "<a href=\"" . $self->{'datapath'} . escapeHTML($outputfile) ."\">"
+      . escapeHTML($linktext) . "</a>";
+}
+
+
 
 ##################################################
 #

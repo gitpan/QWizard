@@ -2,7 +2,7 @@ package QWizard::API;
 
 use strict;
 
-our $VERSION = '3.13';
+our $VERSION = '3.14';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -126,7 +126,8 @@ sub qw_hidden {
 # name, text, clickedvalue, buttontext
 sub qw_button {
     return {type => 'button', name => $_[0], text => $_[1], 
-	    default => $_[2], values => $_[3]};
+	    default => $_[2], values => $_[3],
+	    @_};
 }
 
 1;

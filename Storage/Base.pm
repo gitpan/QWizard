@@ -2,7 +2,7 @@ package QWizard::Storage::Base;
 
 use strict;
 
-our $VERSION = '3.13';
+our $VERSION = '3.14';
 
 sub new {
     my $class = shift;
