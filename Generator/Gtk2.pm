@@ -1,7 +1,7 @@
 package QWizard::Generator::Gtk2;
 
 use strict;
-my $VERSION = '3.14';
+my $VERSION = '3.15';
 use Gtk2 -init;
 require Exporter;
 use QWizard::Generator;
@@ -110,7 +110,9 @@ sub new {
 		       \&QWizard::Generator::Gtk2::do_button,
 		       [['single','values'],
 			['default'],
-			['single','icon']]);
+			['single','icon'],
+			['single','padding'],
+			['noexpand','runcode']]);
     $self->add_handler('fileupload',
 		       \&QWizard::Generator::Gtk2::do_fileupload,
 		       [['single','name'],
@@ -124,7 +126,7 @@ sub new {
     $self->init_default_storage();
 
     # force some default image search paths
-    print "$self->{'imgpaths'}\n";
+    $self->{'imgpaths'} = [] if (!exists($self->{'imgpaths'}));
     $self->{'imgpaths'} = [$self->{'imgpaths'}]
       if (ref($self->{'imgpaths'}) ne 'ARRAY');
     push @{$self->{'imgpaths'}}, '/usr/share/icons/Bluecurve/16x16/stock/';
@@ -139,6 +141,7 @@ sub our_exit {
 sub create_qw_label {
     my ($self, $text, $indent, $icon, $activatewidget, $noimagespacing) = @_;
     my $label = Gtk2::Label->new($text);
+    $noimagespacing ||= 0;
     $label->set_line_wrap(TRUE);
     $label->set_justify('GTK_JUSTIFY_LEFT');
     $label->set_padding(($indent ? 30 : 10), 1);
@@ -285,12 +288,11 @@ sub our_mainloop {
 sub add_qframe {
     my ($self, $title, $where) = @_;
     $where ||= $self->{'vbox'};
-    $self->{'qtable'} = Gtk2::Table->new(3, $self->{'qtable_height'}, FALSE);
+    $self->{'qtable'} = Gtk2::Table->new(3, 3, FALSE);
     push @{$self->{'tables'}}, $self->{'qtable'};
     if (defined($title)) {
 	$self->{'qframe'} = Gtk2::Frame->new($title);
 	$self->{'qframe'}->set_border_width(5);
-	$self->{'qtable_height'} = 10;
 	$self->{'qframe'}->add($self->{'qtable'});
 	$self->{'qframe'}{'removefrom'} = $where;
 	$where->pack_start($self->{'qframe'}, FALSE, FALSE, 0);
@@ -511,6 +513,13 @@ sub do_ok_cancel {
   } else {
       $self->{'nextbutlab'}->set_markup_with_mnemonic($nexttext || 'Ok');
   }
+
+  # see if we have backup places to get to.  If not, grey out the button
+  if ($#{$self->{'backupvars'}} > -1) {
+      $self->{'prevbut'}->set_sensitive(TRUE);
+  } else {
+      $self->{'prevbut'}->set_sensitive(FALSE);
+  }
 }
 
 
@@ -584,7 +593,8 @@ sub put_it {
 
 sub set_default {
     my ($self, $q, $def) = @_;
-    $self->qwparam($q->{'name'}, $def) if ($def && $self->qwparam($q->{'name'}) ne $def);
+    return if (!exists($q->{'name'}) || !defined($def));
+    $self->qwparam($q->{'name'}, $def);
 }
 
 ######################################################################
@@ -726,6 +736,7 @@ sub start_questions {
     }
 
     $self->{radiogroups} = {};
+    $self->{'qadd'} = 0;
 	
     return;
     # XXX: intro
@@ -847,16 +858,29 @@ sub do_right_side {
 }
 
 sub do_button {
-    my ($self, $q, $wiz, $p, $vals, $def, $icon) = @_;
+    my ($self, $q, $wiz, $p, $vals, $def, $icon, $padding, $runcode) = @_;
     $vals = $self->add_accelerator($vals);
 
     my $but = Gtk2::Button->new();
     my $butlab = 
       $self->create_qw_label($vals, FALSE, $icon, $but);
-    $butlab->set_padding(3, 0);
+    $butlab->set_padding($padding || 3, 0);
     $but->add($butlab);
 
-    $but->signal_connect(clicked => \&goto_next);
+# how the heck do you make small buttons in gtk2???
+#    $but->set_border_width(0);
+#    $but->set_relief('GTK_RELIEF_NONE');
+#    $but->set_size_request(40,32);
+
+    # this is breaking the QWizard spirit somewhat because it can't
+    # work easily via the web and must-refresh pages, but for GUI only
+    # allow their own callback function instead
+    if (defined($runcode) && ref($runcode) eq 'CODE') {
+	$but->signal_connect(clicked => $runcode);
+    } else {
+	$but->signal_connect(clicked => \&goto_next);
+    }
+
     $but->{'qbuttonname'} = $q->{'name'};
     $but->{'qbuttonval'} = $def || $q->{'default'}; # XXX: hack for refresh; doesn't deal with code refs properly though.  ugh.
     $but->{'generator'} = $self;
@@ -1023,7 +1047,7 @@ sub do_checkbox {
 	$self->{'lastquestion'}->set_markup_with_mnemonic($text);
 	$self->{'lastquestion'}->set_mnemonic_widget($cb);
     }
-    if ($def eq $vals->[0]) {
+    if (defined($def) && $def eq $vals->[0]) {
 	$cb->set_active(TRUE);
     }
     @{$cb->{'qwvals'}} = @$vals;

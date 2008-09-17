@@ -1,6 +1,6 @@
 package QWizard;
 
-our $VERSION = '3.14';
+our $VERSION = '3.15';
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -41,6 +41,8 @@ sub new {
 	eval { require QWizard::Generator::Best; };
 	$self->{'generator'} =
 	  new QWizard::Generator::Best(@{$self->{'generator_args'}});
+	die "Can't create a suitable QWizard generator"
+	  if (!defined($self->{'generator'}));
     }
 
     bless($self, $class);
@@ -50,7 +52,7 @@ sub new {
     #
     # Get the URI preference option and set our preferences.
     #
-    my $npprefs = $self->{'npprefs'};
+    my $npprefs = $self->{'npprefs'} || "";
     $npprefs =~ s/&np-prefs=//;
     parseprefs($self,$npprefs);
 
@@ -225,9 +227,9 @@ sub magic {
   do {
       qwdebug("------------------------------------------------------------------");
       qwdebug("incoming: " . ref($self->{'generator'}) . " :" 
-	      . $self->qwparam('pass_vars'));
-      qwdebug("incoming variables: " . $self->qwparam('pass_vars'));
-      qwdebug("incoming stack: " . $self->qwparam('qwizard_tree'));
+	      . ($self->qwparam('pass_vars') || ""));
+      qwdebug("incoming variables: " . ($self->qwparam('pass_vars') || ""));
+      qwdebug("incoming stack: " . ($self->qwparam('qwizard_tree') || ""));
       if ($self->qwparam('disp_help_p')) {
 	  $self->display_help();
       } elsif (!$self->qwparam('qw_cancel') && $self->qwparam('pass_vars')) {
@@ -429,7 +431,7 @@ sub keep_working {
   #
   # Handle any auto-updating that's required.
   #
-  my $aupd = qwpref('updateflag');
+  my $aupd = qwpref('updateflag') || 0;
   if($aupd > 0)
   {
 # warn "keep_working:  aupd:  $aupd > 0\n";
@@ -470,7 +472,8 @@ sub munge_form_data {
 		# remap from the values clause which was the text to
 		# the default clause which is the expected value.
 		my $vals = $self->get_value($q->{values});
-		if ($self->qwparam($q->{'name'}) eq $vals) {
+		if (defined ($self->qwparam($q->{'name'})) &&
+		    $self->qwparam($q->{'name'}) eq $vals) {
 		    $self->qwparam($q->{'name'},
 				   $self->get_value($q->{'default'}, undef, [$p, $q]));
 		}
@@ -623,7 +626,7 @@ sub do_list {
 	    my $it = shift @a;
 	    die "fatal spec error.  not an action..." if (ref($it) ne 'CODE');
 	    $result = $it->($self, @a);
-	} else {
+	} elsif (defined($action)) {
 	    $result = "msg:" . $action;
 	    $result =~ s/\@([^\@]+)\@/$self->qwparam($1)/eg;
 	}
@@ -671,7 +674,8 @@ sub do_primary_action_list {
     my $p = $self->get_primary($pdesc->{'name'});
     return if (!$p);
 
-    qwdebug("running actions for $p->{name} for confirm=$confirmonly\n");
+    qwdebug("running actions for ", $p->{name}, " for confirm=",
+	    $confirmonly, "\n");
     $self->maybe_start_remap($pdesc->{'remap'}, $p);
     if ($confirmonly) {
 	if (exists($p->{'actions_descr'})) {
@@ -857,7 +861,7 @@ sub add_vars {
 # passes known list of hidden tags.
 sub pass_vars {
     my $self = shift;
-    my $vars = $self->qwparam('pass_vars');
+    my $vars = $self->qwparam('pass_vars') || "";
     my $newvars = shift;
 
     qwdebug("vars to process: $vars");
@@ -1149,7 +1153,7 @@ sub ask_questions {
 	  $self->run_hooks('ask_questions_begin');
 	  $self->{'generator'}->start_questions($self, $p,
 						$self->unparamstr($self->get_value($p->{title},undef,[$p])),
-						(qwpref('pref_intro') ne '0' ? $self->unparamstr($self->get_value($p->{introduction},undef,[$p])) : ""));
+						((defined(qwpref('pref_intro')) && qwpref('pref_intro') ne '0') ? $self->unparamstr($self->get_value($p->{introduction},undef,[$p])) : ""));
 	  $self->run_hooks('ask_questions_started');
 	  my @questions = @{$p->{'questions'}};
 	  my ($q, @newqs);
@@ -1201,10 +1205,12 @@ sub ask_questions {
 		qwdebug("Done with questions...  Getting user input\n");
 
 		# figure out the value of the next button so we can pass it down
-		my $next = (qwparam('no_actions') ne '' || 
+		my $next = ((defined(qwparam('no_actions'))
+			     && qwparam('no_actions') ne '') || 
 			    !$self->has_actions_or_post_answers()) ? 
 			      '_Finished' : '_Next';
-		if (qwparam('no_actions') ne '' || 
+		if ((defined(qwparam('no_actions')) &&
+		     qwparam('no_actions') ne '') ||
 		    !$self->has_actions_or_post_answers()) {
 		    $self->{'last_screen'} = 1;
 		}
@@ -1623,7 +1629,7 @@ sub get_next_primary {
     my ($self, $top) = @_;
     $top = $self->{'active'} if (!$top);
 
-    return $top if ($top->{'done'} == $PRIM_NOTDONE);
+    return $top if (!exists($top->{'done'}) || $top->{'done'} == $PRIM_NOTDONE);
     if ($top->{'children'}) {
 	foreach my $c (@{$top->{'children'}}) {
 	    my $it = $self->get_next_primary($c);
@@ -1747,7 +1753,7 @@ sub qwsetdebug {
     # be turned off.  If the debugging preference has been set, we'll get it
     # and set the QWizard global debugging flag to that value.
     #
-    if($prefval eq "")
+    if(!defined($prefval) || $prefval eq "")
     {
 	$qwdebug = 0;
 	$self->qwpref('pref_debug','No');

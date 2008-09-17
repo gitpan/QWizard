@@ -7,7 +7,7 @@ package QWizard::Generator::Tk;
 #  - left/right side support
 
 use strict;
-my $VERSION = '3.14';
+my $VERSION = '3.15';
 use Tk;
 use Tk::Table;
 use Tk::Pane;
@@ -278,6 +278,13 @@ sub do_ok_cancel {
       my $text =
 	QWizard::Generator::remove_accelerator($nexttext || 'Ok');
       $self->{'nextbut'}->configure(-text => $text);
+  }
+
+  # see if we have backup places to get to.  If not, grey out the button
+  if ($#{$self->{'backupvars'}} > -1) {
+      $self->{'prevbut'}->configure(-state => 'normal');
+  } else {
+      $self->{'prevbut'}->configure(-state => 'disabled');
   }
 }
 

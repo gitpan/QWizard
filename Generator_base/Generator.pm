@@ -3,7 +3,7 @@ package QWizard::Generator;
 use AutoLoader;
 use POSIX qw(isprint);
 use strict;
-our $VERSION = '3.14';
+our $VERSION = '3.15';
 use QWizard::Storage::Memory;
 require Exporter;
 use File::Temp qw(tempfile);
@@ -463,6 +463,7 @@ sub find_image_path {
 
     # return it if it's already a fullyqualified path
     # XXX: win32 issues
+    return if (!defined($file));
     return $file if ($file eq '' || $file =~ /^\//);
 
     # get a path list

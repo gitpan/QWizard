@@ -39,6 +39,13 @@
       </modifications>
     </step>
 
+	<step type="system" title="modifying the windows ppd">
+	  <commands>
+	    <command>perl windows/ppdupdate {VERSION}</command>
+	    <command>svn diff windows/QWizard.ppd</command>
+	  </commands>
+	</step>
+
     <step type="system" title="Check the version number changes">
       <commands>
 	<command ignoreerror="1">svn diff | egrep '^[-\+]'</command>
@@ -54,6 +61,7 @@
 
     <step type="system" title="Make Test">
       <commands>
+	<command>make clean</command>
 	<command>perl Makefile.PL</command>
 	<command>make test</command>
       </commands>
@@ -92,13 +100,6 @@
 	  <commands>
 	    <command>tcsh windows/blibupdate</command>
 	    <command>cd windows ; tar czf QWizard-{VERSION}.tar.gz blib</command>
-	  </commands>
-	</step>
-
-	<step type="system" title="modifying the windows ppd">
-	  <commands>
-	    <command>perl windows/ppdupdate {VERSION}</command>
-	    <command>svn diff windows/QWizard.ppd</command>
 	  </commands>
 	</step>
 
